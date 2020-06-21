@@ -17,8 +17,6 @@ type Configuration struct {
 type Scenario struct {
 	Name           string
 	StartingValue  float64
-	Income         float64
-	Spending       float64 // should be negative
 	RetirementDate string
 	DeathDate      string
 	Events         []Event
@@ -57,9 +55,23 @@ func ParseDateLists(conf Configuration) (Configuration, error) {
 	for i, scenario := range conf.Scenarios {
 		for j, event := range scenario.Events {
 			dateList := make([]time.Time, 1)
-			startDateT, err := time.Parse(DateTimeLayout, event.StartDate)
-			if err != nil {
-				return conf, err
+			var startDateT time.Time
+			var err error
+			if event.StartDate == "" {
+				fmt.Println("here")
+				startDateT, err = time.Parse(DateTimeLayout, time.Now().Format(DateTimeLayout))
+				if err != nil {
+					return conf, err
+				}
+			} else {
+				startDateT, err = time.Parse(DateTimeLayout, event.StartDate)
+				if err != nil {
+					return conf, err
+				}
+			}
+			if event.EndDate == "" {
+				fmt.Println("there")
+				event.EndDate = scenario.DeathDate
 			}
 			endDateT, err := time.Parse(DateTimeLayout, event.EndDate)
 			if err != nil {
