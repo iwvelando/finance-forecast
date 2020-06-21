@@ -1,0 +1,23 @@
+scenarios:
+  - name: home and auto purchases
+    startingValue: 300000
+    income: 9000
+    spending: 4000
+    retirementDate: 2055-01
+    deathDate: 2100-01
+    events:
+      - name: home purchase
+        amount: -200000
+        startDate: 2025-01
+        endDate:  2025-01
+        frequency: 1
+      - name: auto purchase
+        amount: -50000
+        startDate: 2023-01
+        endDate: 2023-01
+        frequency: 1
+      - name: amazon prime now
+        amount: -120
+        startDate: 2020-05
+        endDate: 2100-01
+        frequency: 12
