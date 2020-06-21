@@ -58,7 +58,6 @@ func ParseDateLists(conf Configuration) (Configuration, error) {
 			var startDateT time.Time
 			var err error
 			if event.StartDate == "" {
-				fmt.Println("here")
 				startDateT, err = time.Parse(DateTimeLayout, time.Now().Format(DateTimeLayout))
 				if err != nil {
 					return conf, err
@@ -70,7 +69,6 @@ func ParseDateLists(conf Configuration) (Configuration, error) {
 				}
 			}
 			if event.EndDate == "" {
-				fmt.Println("there")
 				event.EndDate = scenario.DeathDate
 			}
 			endDateT, err := time.Parse(DateTimeLayout, event.EndDate)
