@@ -21,7 +21,7 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 		var result Forecast
 		result.Name = scenario.Name
 		result.Data = make(map[string]float64)
-		result.Data[startDate] = scenario.StartingValue
+		result.Data[startDate] = conf.Common.StartingValue
 		previousDate := startDate
 		for {
 			date, err := IncrementDate(previousDate, config.DateTimeLayout)
@@ -32,8 +32,12 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			if err != nil {
 				return results, nil
 			}
-			result.Data[date] = result.Data[previousDate] + eventsAmount
-			if date == scenario.DeathDate {
+			commonEventsAmount, err := HandleEvents(date, conf.Common.Events, config.DateTimeLayout)
+			if err != nil {
+				return results, nil
+			}
+			result.Data[date] = result.Data[previousDate] + eventsAmount + commonEventsAmount
+			if date == conf.Common.DeathDate {
 				break
 			}
 			previousDate = date
