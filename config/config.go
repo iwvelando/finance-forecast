@@ -16,6 +16,7 @@ type Configuration struct {
 // Scenario holds all events for a given scenario
 type Scenario struct {
 	Name           string
+	Active         bool
 	StartingValue  float64
 	RetirementDate string
 	DeathDate      string

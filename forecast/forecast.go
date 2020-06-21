@@ -15,6 +15,9 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 	var results []Forecast
 	startDate := time.Now().Format(config.DateTimeLayout)
 	for _, scenario := range conf.Scenarios {
+		if !scenario.Active {
+			continue
+		}
 		var result Forecast
 		result.Name = scenario.Name
 		result.Data = make(map[string]float64)
