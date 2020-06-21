@@ -13,7 +13,7 @@ type Forecast struct {
 
 func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, error) {
 	var results []Forecast
-	startDate := time.Now().Format("2006-01")
+	startDate := time.Now().Format(config.DateTimeLayout)
 	for _, scenario := range conf.Scenarios {
 		var result Forecast
 		result.Name = scenario.Name
@@ -29,7 +29,7 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			if err != nil {
 				return results, nil
 			}
-			result.Data[date] = result.Data[previousDate] + scenario.Income + scenario.Spending + eventsAmount
+			result.Data[date] = result.Data[previousDate] + eventsAmount
 			if date == scenario.DeathDate {
 				break
 			}
