@@ -87,20 +87,24 @@ func PrettyFormat(results []forecast.Forecast) {
 }
 
 func CsvFormat(results []forecast.Forecast) {
+	// All results have the same timeline, so grab the dates from the first
+	dates := make([]string, len(results[0].Data))
+	n := 0
+	for date := range results[0].Data {
+		dates[n] = date
+		n++
+	}
+	sort.Strings(dates)
+	fmt.Printf(`"date"`)
 	for _, result := range results {
-		fmt.Printf("\"date\",\"amount (%s)\"\n", result.Name)
-		dates := make([]string, len(result.Data))
-		n := 0
-		for date := range result.Data {
-			dates[n] = date
-			n++
+		fmt.Printf(`,"amount (%s)"`, result.Name)
+	}
+	fmt.Printf("\n")
+	for _, date := range dates {
+		fmt.Printf(`"%s"`, date)
+		for _, result := range results {
+			fmt.Printf(`,"%.2f"`, result.Data[date])
 		}
-		sort.Strings(dates)
-		for _, date := range dates {
-			fmt.Printf("\"%s\",\"%.2f\"\n", date, result.Data[date])
-		}
-		if len(results) > 1 {
-			fmt.Printf("\n")
-		}
+		fmt.Printf("\n")
 	}
 }
