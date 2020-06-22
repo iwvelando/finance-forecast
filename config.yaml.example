@@ -1,23 +1,40 @@
+common:
+  startingValue: 30000 # Set your starting balance; this simulation currently only tracks one balance
+  deathDate: 2090-01 # Set your estimated death date; the simulation ends here
+  events: # common events will be shared by all scenarios
+    - name: Social security
+      amount: 1000.00 # Positive amounts are income while negative amounts are spending
+      frequency: 1 # Frequency is measured in months; frequency of 1 is monthly, frequency of 3 is quarterly, etc
+      startDate: 2050-01 # startDate optionally specifies when an event begins; if unspecified the current date is the start
+    - name: Service quarterly bill
+      amount: -10.00
+      frequency: 3
+      startDate: 2020-07
+    - name: Other service monthly bill
+      amount: -35.00
+      frequency: 1
 scenarios:
-  - name: home and auto purchases
-    startingValue: 300000
-    income: 9000
-    spending: 4000
-    retirementDate: 2055-01
-    deathDate: 2100-01
+  - name: current path
+    active: true # scenarios may be disabled
     events:
-      - name: home purchase
-        amount: -200000
-        startDate: 2025-01
-        endDate:  2025-01
+      - name: Income
+        amount: 1234.56
         frequency: 1
-      - name: auto purchase
-        amount: -50000
-        startDate: 2023-01
-        endDate: 2023-01
+        endDate: 2050-01 # endDate optionally specifies when an event ends; if unspecified the deathDate is the end
+      - name: Bonus
+        amount: 7891.23
         frequency: 1
-      - name: amazon prime now
-        amount: -120
-        startDate: 2020-05
-        endDate: 2100-01
-        frequency: 12
+        startDate: 2020-12 # one-time events are specified with a frequency of 1 and startDate = endDate
+        endDate: 2020-12
+  - name: alternative path
+    active: true
+    events:
+      - name: Income
+        amount: 1234.56
+        frequency: 1
+        endDate: 2020-09
+      - name: Income (new job)
+        amount: 2345.67
+        frequency: 1
+        startDate: 2020-10
+        endDate: 2050-01
