@@ -13,6 +13,7 @@ import (
 
 func main() {
 
+	// Initialize logging.
 	logger, err := zap.NewProduction()
 	if err != nil {
 		fmt.Println("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to initiate logger\"}")
@@ -20,6 +21,7 @@ func main() {
 	}
 	defer logger.Sync()
 
+	// Process command line flags.
 	configLocation := flag.String("config", "config.yaml", "path to configuration file")
 	outputFormat := flag.String("output-format", "pretty", "type of output: pretty, csv")
 	flag.Parse()
@@ -30,7 +32,7 @@ func main() {
 		)
 	}
 
-	// Load the config file based on path provided via CLI or the default
+	// Load the config file based on path provided via CLI or the default.
 	conf, err := config.LoadConfiguration(*configLocation)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("failed to load configuration at %s", *configLocation),
@@ -39,7 +41,7 @@ func main() {
 		)
 	}
 
-	// Process the event dates
+	// Process the Event dates into time.Time.
 	*conf, err = config.ParseDateLists(*conf)
 	if err != nil {
 		logger.Fatal("failed to parse date lists",
@@ -48,6 +50,7 @@ func main() {
 		)
 	}
 
+	// Run the simulation to get the Forecast.
 	results, err := forecast.GetForecast(logger, *conf)
 	if err != nil {
 		logger.Fatal("failed to compute forecast",
@@ -56,6 +59,7 @@ func main() {
 		)
 	}
 
+	// Handle output.
 	if *outputFormat == "pretty" {
 		PrettyFormat(results)
 	} else if *outputFormat == "csv" {
@@ -64,6 +68,7 @@ func main() {
 
 }
 
+// PrettyFormat outputs a human-readable rather than machine-readable table.
 func PrettyFormat(results []forecast.Forecast) {
 	p := message.NewPrinter(language.English)
 	for _, result := range results {
@@ -86,6 +91,7 @@ func PrettyFormat(results []forecast.Forecast) {
 	}
 }
 
+// CsvFormat outputs in comma-separated value format.
 func CsvFormat(results []forecast.Forecast) {
 	// All results have the same timeline, so grab the dates from the first
 	dates := make([]string, len(results[0].Data))
