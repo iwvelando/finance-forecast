@@ -3,6 +3,7 @@
 package forecast
 
 import (
+	"fmt"
 	"github.com/iwvelando/finance-forecast/config"
 	"go.uber.org/zap"
 	"time"
@@ -20,6 +21,9 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 	startDate := time.Now().Format(config.DateTimeLayout)
 	for _, scenario := range conf.Scenarios {
 		if !scenario.Active {
+			logger.Debug(fmt.Sprintf("skipping scenario %s because it is inactive", scenario.Name),
+				zap.String("op", "forecast.GetForecast"),
+			)
 			continue
 		}
 
@@ -34,11 +38,11 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			if err != nil {
 				return results, err
 			}
-			eventsAmount, err := HandleEvents(date, scenario.Events, config.DateTimeLayout)
+			eventsAmount, err := HandleEvents(logger, date, scenario.Events, config.DateTimeLayout)
 			if err != nil {
 				return results, err
 			}
-			commonEventsAmount, err := HandleEvents(date, conf.Common.Events, config.DateTimeLayout)
+			commonEventsAmount, err := HandleEvents(logger, date, conf.Common.Events, config.DateTimeLayout)
 			if err != nil {
 				return results, err
 			}
@@ -66,7 +70,7 @@ func IncrementDate(previousDate string, layout string) (string, error) {
 }
 
 // HandleEvents sums all amounts for Events that occur on the input date.
-func HandleEvents(date string, events []config.Event, layout string) (float64, error) {
+func HandleEvents(logger *zap.Logger, date string, events []config.Event, layout string) (float64, error) {
 	amount := 0.0
 	dateT, err := time.Parse(layout, date)
 	if err != nil {
@@ -75,6 +79,9 @@ func HandleEvents(date string, events []config.Event, layout string) (float64, e
 	for _, event := range events {
 		for _, eventDate := range event.DateList {
 			if dateT.Equal(eventDate) {
+				logger.Debug(fmt.Sprintf("%s: event %s is active for amount %.2f", date, event.Name, event.Amount),
+					zap.String("op", "forecast.HandleEvents"),
+				)
 				amount += event.Amount
 				break
 			}
