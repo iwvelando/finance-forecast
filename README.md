@@ -42,6 +42,7 @@ Output:
 
 ## Future Work
 
+* Implement tests
 * I would like to integrate loan amortization schedules and balance thresholds prior to early pay-offs to make simulating those scenarios easier
 * I would like to be able to declare categories for events and tabulate average spending and income based on category
 * I would like this to be able to produce charts of the different scenarios without having to import the CSV output in spreadsheet software
