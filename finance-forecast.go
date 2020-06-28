@@ -42,9 +42,18 @@ func main() {
 	}
 
 	// Process the Event dates into time.Time.
-	*conf, err = config.ParseDateLists(*conf)
+	err = conf.ParseDateLists()
 	if err != nil {
 		logger.Fatal("failed to parse date lists",
+			zap.String("op", "main"),
+			zap.Error(err),
+		)
+	}
+
+	// Process the amortization schedules for all loans.
+	err = conf.ProcessLoans()
+	if err != nil {
+		logger.Fatal("failed to process loan amortization schedules",
 			zap.String("op", "main"),
 			zap.Error(err),
 		)

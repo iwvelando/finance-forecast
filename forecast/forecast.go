@@ -34,7 +34,7 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 		result.Data[startDate] = conf.Common.StartingValue
 		previousDate := startDate
 		for {
-			date, err := IncrementDate(previousDate, config.DateTimeLayout)
+			date, err := config.IncrementDate(previousDate, config.DateTimeLayout)
 			if err != nil {
 				return results, err
 			}
@@ -56,17 +56,6 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 	}
 
 	return results, nil
-}
-
-// IncrementDate returns the next string-formatted date following the input
-// date; this is always a 1-month increment.
-func IncrementDate(previousDate string, layout string) (string, error) {
-	t, err := time.Parse(layout, previousDate)
-	if err != nil {
-		return previousDate, err
-	}
-	nextDate := t.AddDate(0, 1, 0).Format(layout)
-	return nextDate, nil
 }
 
 // HandleEvents sums all amounts for Events that occur on the input date.
