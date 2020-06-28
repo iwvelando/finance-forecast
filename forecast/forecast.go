@@ -88,7 +88,7 @@ func HandleLoans(logger *zap.Logger, date string, loans []config.Loan) float64 {
 			logger.Debug(fmt.Sprintf("%s: loan %s is active for amount %.2f", date, loan.Name, payment.Payment),
 				zap.String("op", "forecast.HandleLoans"),
 			)
-			amount += payment.Payment
+			amount -= payment.Payment
 			continue
 		}
 	}
