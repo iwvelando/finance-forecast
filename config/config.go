@@ -47,15 +47,18 @@ type Event struct {
 
 // Loan indicates a loan and its parameters.
 type Loan struct {
-	Name                 string
-	Principal            float64
-	InterestRate         float64
-	Term                 int // months
-	StartDate            string
-	EarlyPayoffThreshold float64
-	SellProperty         bool
-	ValueChange          float64
-	AmortizationSchedule Amortization
+	Name                    string
+	Principal               float64
+	InterestRate            float64
+	Term                    int // months
+	StartDate               string
+	Escrow                  float64
+	MortgageInsurance       float64
+	MortgageInsuranceCutoff float64
+	EarlyPayoffThreshold    float64
+	SellProperty            bool
+	ValueChange             float64
+	AmortizationSchedule    map[string]Payment
 }
 
 // Payment holds the values for a given payment
@@ -64,11 +67,6 @@ type Payment struct {
 	Principal          float64
 	Interest           float64
 	RemainingPrincipal float64
-}
-
-// Amortization holds the amortization schedule per month
-type Amortization struct {
-	Payments map[string]Payment
 }
 
 // LoadConfiguration takes a file path as input and loads the YAML-formatted
@@ -178,9 +176,9 @@ func IncrementDate(previousDate, layout string) (string, error) {
 // schedules.
 func (conf *Configuration) ProcessLoans() error {
 	// First handle the processing for all Loans in Scenarios.
-	for _, scenario := range conf.Scenarios {
-		for _, loan := range scenario.Loans {
-			err := loan.GetAmortizationSchedule()
+	for i, scenario := range conf.Scenarios {
+		for j := range scenario.Loans {
+			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule()
 			if err != nil {
 				return err
 			}
@@ -188,8 +186,8 @@ func (conf *Configuration) ProcessLoans() error {
 	}
 
 	// Next handle the processing for the Common Loans.
-	for _, loan := range conf.Common.Loans {
-		err := loan.GetAmortizationSchedule()
+	for i := range conf.Common.Loans {
+		err := conf.Common.Loans[i].GetAmortizationSchedule()
 		if err != nil {
 			return err
 		}
@@ -203,16 +201,20 @@ func (loan *Loan) GetAmortizationSchedule() error {
 	periodicInterestRate := loan.InterestRate / (100.0 * 12.0)
 	power := math.Pow((1.00 + periodicInterestRate), float64(loan.Term))
 	discountFactor := (power - 1.00) / power
-	payment := loan.Principal * periodicInterestRate / discountFactor
+	loanPayment := loan.Principal * periodicInterestRate / discountFactor
+
+	loan.AmortizationSchedule = make(map[string]Payment)
 
 	// Handle the first month individually.
-	loan.AmortizationSchedule.Payments = make(map[string]Payment)
-	loan.AmortizationSchedule.Payments[loan.StartDate] = Payment{
-		payment,
-		loan.Principal * loan.InterestRate / (100.0 * 12.0),
-		payment - loan.Principal*loan.InterestRate/(100.0*12.0),
-		loan.Principal - (payment - loan.Principal*loan.InterestRate/(100.0*12.0)),
+	var firstPayment Payment
+	firstPayment.Payment = loanPayment
+	if &loan.Escrow != nil {
+		firstPayment.Payment += loan.Escrow
 	}
+	firstPayment.Interest = loan.Principal * loan.InterestRate / (100.0 * 12.0)
+	firstPayment.Principal = loanPayment - firstPayment.Interest
+	firstPayment.RemainingPrincipal = loan.Principal - firstPayment.Principal
+	loan.AmortizationSchedule[loan.StartDate] = firstPayment
 
 	// Iterate over the remainder of the term.
 	previousMonth := loan.StartDate
@@ -223,20 +225,27 @@ func (loan *Loan) GetAmortizationSchedule() error {
 
 	for month := 2; month <= loan.Term; month++ {
 		var currentPayment Payment
-		currentPayment.Payment = payment
-		currentPayment.Interest = loan.AmortizationSchedule.Payments[previousMonth].RemainingPrincipal * loan.InterestRate / (100.0 * 12.0)
-		currentPayment.Principal = payment - currentPayment.Interest
+		currentPayment.Payment = loanPayment
+		if &loan.Escrow != nil {
+			currentPayment.Payment += loan.Escrow
+		}
+		currentPayment.Interest = loan.AmortizationSchedule[previousMonth].RemainingPrincipal * loan.InterestRate / (100.0 * 12.0)
+		currentPayment.Principal = loanPayment - currentPayment.Interest
 		if month == loan.Term {
 			// We will get machine error otherwise so just set to 0
 			currentPayment.RemainingPrincipal = 0.00
 		} else {
-			currentPayment.RemainingPrincipal = loan.AmortizationSchedule.Payments[previousMonth].RemainingPrincipal - currentPayment.Principal
+			currentPayment.RemainingPrincipal = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - currentPayment.Principal
 		}
-		loan.AmortizationSchedule.Payments[currentMonth] = currentPayment
+		if &loan.MortgageInsurance != nil && &loan.MortgageInsuranceCutoff != nil {
+			if currentPayment.RemainingPrincipal/loan.Principal <= loan.MortgageInsuranceCutoff/100.0 {
+				currentPayment.Payment -= loan.MortgageInsurance
+			}
+		}
+		loan.AmortizationSchedule[currentMonth] = currentPayment
 		previousMonth = currentMonth
 		currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
 	}
-	fmt.Println(loan.AmortizationSchedule)
 
 	return nil
 }
