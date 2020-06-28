@@ -46,8 +46,8 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			if err != nil {
 				return results, err
 			}
-			loansAmount := HandleLoans(logger, date, scenario.Loans)
-			commonLoansAmount := HandleLoans(logger, date, conf.Common.Loans)
+			loansAmount := HandleLoans(logger, date, scenario.Loans, conf, result.Data[previousDate]+eventsAmount+commonEventsAmount)
+			commonLoansAmount := HandleLoans(logger, date, conf.Common.Loans, conf, result.Data[previousDate]+eventsAmount+commonEventsAmount)
 			result.Data[date] = result.Data[previousDate] + eventsAmount + commonEventsAmount + loansAmount + commonLoansAmount
 			if date == conf.Common.DeathDate {
 				break
@@ -81,14 +81,19 @@ func HandleEvents(logger *zap.Logger, date string, events []config.Event, layout
 	return amount, nil
 }
 
-func HandleLoans(logger *zap.Logger, date string, loans []config.Loan) float64 {
+func HandleLoans(logger *zap.Logger, date string, loans []config.Loan, conf config.Configuration, balance float64) float64 {
 	amount := 0.0
 	for _, loan := range loans {
 		if payment, present := loan.AmortizationSchedule[date]; present {
 			logger.Debug(fmt.Sprintf("%s: loan %s is active for amount %.2f", date, loan.Name, payment.Payment),
 				zap.String("op", "forecast.HandleLoans"),
 			)
-			amount -= payment.Payment
+			payoff, paidoff := conf.CheckEarlyPayoffThreshold(date, loan, balance)
+			if paidoff {
+				amount -= payoff
+			} else {
+				amount -= payment.Payment
+			}
 			continue
 		}
 	}

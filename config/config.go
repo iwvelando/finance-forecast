@@ -48,14 +48,16 @@ type Event struct {
 // Loan indicates a loan and its parameters.
 type Loan struct {
 	Name                    string
+	StartDate               string
 	Principal               float64
 	InterestRate            float64
 	Term                    int // months
-	StartDate               string
+	DownPayment             float64
 	Escrow                  float64
 	MortgageInsurance       float64
 	MortgageInsuranceCutoff float64
 	EarlyPayoffThreshold    float64
+	EarlyPayoffDate         string
 	SellProperty            bool
 	ValueChange             float64
 	AmortizationSchedule    map[string]Payment
@@ -207,10 +209,7 @@ func (loan *Loan) GetAmortizationSchedule() error {
 
 	// Handle the first month individually.
 	var firstPayment Payment
-	firstPayment.Payment = loanPayment
-	if &loan.Escrow != nil {
-		firstPayment.Payment += loan.Escrow
-	}
+	firstPayment.Payment = loanPayment + loan.Escrow + loan.DownPayment
 	firstPayment.Interest = loan.Principal * loan.InterestRate / (100.0 * 12.0)
 	firstPayment.Principal = loanPayment - firstPayment.Interest
 	firstPayment.RemainingPrincipal = loan.Principal - firstPayment.Principal
@@ -225,27 +224,71 @@ func (loan *Loan) GetAmortizationSchedule() error {
 
 	for month := 2; month <= loan.Term; month++ {
 		var currentPayment Payment
-		currentPayment.Payment = loanPayment
-		if &loan.Escrow != nil {
-			currentPayment.Payment += loan.Escrow
-		}
-		currentPayment.Interest = loan.AmortizationSchedule[previousMonth].RemainingPrincipal * loan.InterestRate / (100.0 * 12.0)
-		currentPayment.Principal = loanPayment - currentPayment.Interest
-		if month == loan.Term {
-			// We will get machine error otherwise so just set to 0
-			currentPayment.RemainingPrincipal = 0.00
-		} else {
-			currentPayment.RemainingPrincipal = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - currentPayment.Principal
-		}
-		if &loan.MortgageInsurance != nil && &loan.MortgageInsuranceCutoff != nil {
-			if currentPayment.RemainingPrincipal/loan.Principal <= loan.MortgageInsuranceCutoff/100.0 {
-				currentPayment.Payment -= loan.MortgageInsurance
+		if loan.EarlyPayoffDate == currentMonth {
+			if loan.SellProperty {
+				fmt.Printf("%s: paying off %s for %.2f and selling for %.2f\n", currentMonth, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.Principal*(1.0+loan.ValueChange/100.0))
+				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.Principal*(1.0+loan.ValueChange/100.0)
+			} else {
+				fmt.Printf("%s: paying off %s for %.2f\n", currentMonth, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal)
+				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal
 			}
+			currentPayment.Interest = 0.00
+			currentPayment.Principal = 0.00
+			currentPayment.RemainingPrincipal = 0.00
+			loan.AmortizationSchedule[currentMonth] = currentPayment
+			break
+		} else {
+			currentPayment.Payment = loanPayment + loan.Escrow
+			currentPayment.Interest = loan.AmortizationSchedule[previousMonth].RemainingPrincipal * loan.InterestRate / (100.0 * 12.0)
+			currentPayment.Principal = loanPayment - currentPayment.Interest
+			if month == loan.Term {
+				// We will get machine error otherwise so just set to 0
+				currentPayment.RemainingPrincipal = 0.00
+			} else {
+				currentPayment.RemainingPrincipal = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - currentPayment.Principal
+			}
+			if loan.MortgageInsuranceCutoff > 0 {
+				if currentPayment.RemainingPrincipal/loan.Principal <= loan.MortgageInsuranceCutoff/100.0 {
+					currentPayment.Payment -= loan.MortgageInsurance
+				}
+			}
+			loan.AmortizationSchedule[currentMonth] = currentPayment
 		}
-		loan.AmortizationSchedule[currentMonth] = currentPayment
 		previousMonth = currentMonth
 		currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
 	}
 
 	return nil
+}
+
+func (conf *Configuration) CheckEarlyPayoffThreshold(date string, loan Loan, balance float64) (float64, bool) {
+	amount := 0.0
+	if loan.EarlyPayoffThreshold > 0 {
+		if balance-loan.AmortizationSchedule[date].RemainingPrincipal >= loan.EarlyPayoffThreshold {
+			fmt.Printf("%s: threshold paying off %s for %.2f\n", date, loan.Name, loan.AmortizationSchedule[date].RemainingPrincipal)
+			amount = loan.AmortizationSchedule[date].RemainingPrincipal
+			if loan.SellProperty {
+				fmt.Printf("%s: selling %s for %.2f\n", date, loan.Name, loan.Principal*(1.0+loan.ValueChange/100.0))
+				amount -= loan.Principal * (1.0 + loan.ValueChange/100.0)
+			}
+			// Check scenario loans for erasure
+			for i, scenario := range conf.Scenarios {
+				for j, scenarioLoan := range scenario.Loans {
+					if scenarioLoan.Name == loan.Name {
+						conf.Scenarios[i].Loans[j] = Loan{}
+						return amount, true
+					}
+				}
+			}
+
+			// Check common loans for erasure
+			for i, commonLoan := range conf.Common.Loans {
+				if commonLoan.Name == loan.Name {
+					conf.Common.Loans[i] = Loan{}
+					return amount, true
+				}
+			}
+		}
+	}
+	return amount, false
 }
