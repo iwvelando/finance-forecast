@@ -181,6 +181,7 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	// First handle the processing for all Loans in Scenarios.
 	for i, scenario := range conf.Scenarios {
 		for j := range scenario.Loans {
+			conf.Scenarios[i].Loans[j].ApplyDownPayment()
 			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule(logger)
 			if err != nil {
 				return err
@@ -190,6 +191,7 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 
 	// Next handle the processing for the Common Loans.
 	for i := range conf.Common.Loans {
+		conf.Common.Loans[i].ApplyDownPayment()
 		err := conf.Common.Loans[i].GetAmortizationSchedule(logger)
 		if err != nil {
 			return err
@@ -197,6 +199,12 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	}
 
 	return nil
+}
+
+// ApplyDownPayment modifies the loan principal to reflect any down payment
+// so that the amortization schedules is computed correctly.
+func (loan *Loan) ApplyDownPayment() {
+	loan.Principal -= loan.DownPayment
 }
 
 // GetAmortizationSchedule computes the amortization schedule for a given Loan.
