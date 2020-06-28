@@ -81,6 +81,8 @@ func HandleEvents(logger *zap.Logger, date string, events []config.Event, layout
 	return amount, nil
 }
 
+// HandleLoans identifies any loan-based financial events that occur on the
+// input date.
 func HandleLoans(logger *zap.Logger, date string, loans []config.Loan, conf config.Configuration, balance float64) float64 {
 	amount := 0.0
 	for _, loan := range loans {
@@ -88,7 +90,7 @@ func HandleLoans(logger *zap.Logger, date string, loans []config.Loan, conf conf
 			logger.Debug(fmt.Sprintf("%s: loan %s is active for amount %.2f", date, loan.Name, payment.Payment),
 				zap.String("op", "forecast.HandleLoans"),
 			)
-			payoff, paidoff := conf.CheckEarlyPayoffThreshold(date, loan, balance)
+			payoff, paidoff := conf.CheckEarlyPayoffThreshold(logger, date, loan, balance)
 			if paidoff {
 				amount -= payoff
 			} else {

@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 	"math"
 	"time"
 )
@@ -176,11 +177,11 @@ func IncrementDate(previousDate, layout string) (string, error) {
 
 // ProcessLoans iterates through all loans and produces the amortization
 // schedules.
-func (conf *Configuration) ProcessLoans() error {
+func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	// First handle the processing for all Loans in Scenarios.
 	for i, scenario := range conf.Scenarios {
 		for j := range scenario.Loans {
-			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule()
+			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule(logger)
 			if err != nil {
 				return err
 			}
@@ -189,7 +190,7 @@ func (conf *Configuration) ProcessLoans() error {
 
 	// Next handle the processing for the Common Loans.
 	for i := range conf.Common.Loans {
-		err := conf.Common.Loans[i].GetAmortizationSchedule()
+		err := conf.Common.Loans[i].GetAmortizationSchedule(logger)
 		if err != nil {
 			return err
 		}
@@ -199,7 +200,7 @@ func (conf *Configuration) ProcessLoans() error {
 }
 
 // GetAmortizationSchedule computes the amortization schedule for a given Loan.
-func (loan *Loan) GetAmortizationSchedule() error {
+func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger) error {
 	periodicInterestRate := loan.InterestRate / (100.0 * 12.0)
 	power := math.Pow((1.00 + periodicInterestRate), float64(loan.Term))
 	discountFactor := (power - 1.00) / power
@@ -226,11 +227,15 @@ func (loan *Loan) GetAmortizationSchedule() error {
 		var currentPayment Payment
 		if loan.EarlyPayoffDate == currentMonth {
 			if loan.SellProperty {
-				fmt.Printf("%s: paying off %s for %.2f and selling for %.2f\n", currentMonth, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.Principal*(1.0+loan.ValueChange/100.0))
 				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.Principal*(1.0+loan.ValueChange/100.0)
+				logger.Debug(fmt.Sprintf("%s: paying off asset %s for %.2f and selling for %.2f", loan.EarlyPayoffDate, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.Principal*(1.0+loan.ValueChange/100.0)),
+					zap.String("op", "config.GetAmortizationSchedule"),
+				)
 			} else {
-				fmt.Printf("%s: paying off %s for %.2f\n", currentMonth, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal)
 				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal
+				logger.Debug(fmt.Sprintf("%s: paying off asset %s for %.2f", loan.EarlyPayoffDate, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal),
+					zap.String("op", "config.GetAmortizationSchedule"),
+				)
 			}
 			currentPayment.Interest = 0.00
 			currentPayment.Principal = 0.00
@@ -261,17 +266,23 @@ func (loan *Loan) GetAmortizationSchedule() error {
 	return nil
 }
 
-func (conf *Configuration) CheckEarlyPayoffThreshold(date string, loan Loan, balance float64) (float64, bool) {
+// CheckEarlyPayoffThreshold checks for whether or not it is time to payoff a
+// loan early based on an optionally-configured threshold.
+func (conf *Configuration) CheckEarlyPayoffThreshold(logger *zap.Logger, date string, loan Loan, balance float64) (float64, bool) {
 	amount := 0.0
 	if loan.EarlyPayoffThreshold > 0 {
 		if balance-loan.AmortizationSchedule[date].RemainingPrincipal >= loan.EarlyPayoffThreshold {
-			fmt.Printf("%s: threshold paying off %s for %.2f\n", date, loan.Name, loan.AmortizationSchedule[date].RemainingPrincipal)
+			logger.Debug(fmt.Sprintf("%s: based on threshold paying off asset %s for %.2f", date, loan.Name, loan.AmortizationSchedule[date].RemainingPrincipal),
+				zap.String("op", "config.CheckEarlyPayoffThreshold"),
+			)
 			amount = loan.AmortizationSchedule[date].RemainingPrincipal
 			if loan.SellProperty {
-				fmt.Printf("%s: selling %s for %.2f\n", date, loan.Name, loan.Principal*(1.0+loan.ValueChange/100.0))
 				amount -= loan.Principal * (1.0 + loan.ValueChange/100.0)
+				logger.Debug(fmt.Sprintf("%s: selling asset %s for %.2f", date, loan.Name, loan.Principal*(1.0+loan.ValueChange/100.0)),
+					zap.String("op", "config.CheckEarlyPayoffThreshold"),
+				)
 			}
-			// Check scenario loans for erasure
+			// Check scenario loans for erasure.
 			for i, scenario := range conf.Scenarios {
 				for j, scenarioLoan := range scenario.Loans {
 					if scenarioLoan.Name == loan.Name {
@@ -281,7 +292,7 @@ func (conf *Configuration) CheckEarlyPayoffThreshold(date string, loan Loan, bal
 				}
 			}
 
-			// Check common loans for erasure
+			// Check common loans for erasure.
 			for i, commonLoan := range conf.Common.Loans {
 				if commonLoan.Name == loan.Name {
 					conf.Common.Loans[i] = Loan{}

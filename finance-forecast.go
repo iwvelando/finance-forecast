@@ -14,8 +14,8 @@ import (
 func main() {
 
 	// Initialize logging.
-	//logger, err := zap.NewDevelopment()
-	logger, err := zap.NewProduction()
+	logger, err := zap.NewDevelopment()
+	//logger, err := zap.NewProduction()
 	if err != nil {
 		fmt.Println("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to initiate logger\"}")
 		panic(err)
@@ -52,7 +52,7 @@ func main() {
 	}
 
 	// Process the amortization schedules for all loans.
-	err = conf.ProcessLoans()
+	err = conf.ProcessLoans(logger)
 	if err != nil {
 		logger.Fatal("failed to process loan amortization schedules",
 			zap.String("op", "main"),
