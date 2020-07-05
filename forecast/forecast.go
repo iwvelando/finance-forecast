@@ -11,8 +11,9 @@ import (
 
 // Forecast holds all information related to a specific forecast.
 type Forecast struct {
-	Name string
-	Data map[string]float64
+	Name  string
+	Data  map[string]float64
+	Notes map[string][]string
 }
 
 // GetForecast processes the Forecasts for all Scenarios.
@@ -31,6 +32,7 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 		var result Forecast
 		result.Name = scenario.Name
 		result.Data = make(map[string]float64)
+		result.Notes = make(map[string][]string)
 		result.Data[startDate] = conf.Common.StartingValue
 		previousDate := startDate
 		for {
@@ -47,15 +49,21 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 				return results, err
 			}
 			for j := range conf.Scenarios[i].Loans {
-				err = conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, result.Data[previousDate]+eventsAmount+commonEventsAmount)
+				note, err := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, result.Data[previousDate]+eventsAmount+commonEventsAmount)
 				if err != nil {
 					return results, err
 				}
+				if note != "" {
+					result.Notes[date] = append(result.Notes[date], note)
+				}
 			}
 			for j := range conf.Common.Loans {
-				err = conf.Common.Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, result.Data[previousDate]+eventsAmount+commonEventsAmount)
+				note, err := conf.Common.Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, result.Data[previousDate]+eventsAmount+commonEventsAmount)
 				if err != nil {
 					return results, err
+				}
+				if note != "" {
+					result.Notes[date] = append(result.Notes[date], note)
 				}
 			}
 			loansAmount := HandleLoans(logger, date, scenario.Loans)
