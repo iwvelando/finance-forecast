@@ -290,7 +290,6 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 					if december {
 						var escrowPayment Payment
 						escrowPayment.Payment = loan.Escrow * 12
-						//escrowPayment.Payment = 0.00
 						loan.AmortizationSchedule[currentMonth] = escrowPayment
 					}
 					previousMonth = currentMonth
@@ -335,7 +334,6 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 					if december {
 						var escrowPayment Payment
 						escrowPayment.Payment = loan.Escrow * 12
-						//escrowPayment.Payment = 0.00
 						loan.AmortizationSchedule[currentMonth] = escrowPayment
 					}
 					previousMonth = currentMonth
@@ -361,46 +359,61 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 // refunds are not factored into the threshold comparison because in reality
 // those can take some time to process (even though the simulation acts as
 // though an escrow refund is processed immediately).
-func (conf *Configuration) CheckEarlyPayoffThreshold(logger *zap.Logger, date string, loan Loan, balance float64) (float64, bool) {
-	amount := 0.0
-	previousDate, err := DecrementDate(date, DateTimeLayout)
+func (loan *Loan) CheckEarlyPayoffThreshold(logger *zap.Logger, currentMonth string, deathDate string, balance float64) error {
+	started, err := DateBeforeDate(loan.StartDate, currentMonth)
 	if err != nil {
-		// TODO fix this
-		return amount, false
+		return err
 	}
-	if loan.EarlyPayoffThreshold > 0 {
-		if balance-loan.AmortizationSchedule[date].RemainingPrincipal >= loan.EarlyPayoffThreshold {
-			logger.Debug(fmt.Sprintf("%s: based on threshold paying off asset %s for %.2f", date, loan.Name, loan.AmortizationSchedule[previousDate].RemainingPrincipal),
+	if loan.EarlyPayoffThreshold > 0 && started {
+		previousMonth, err := DecrementDate(currentMonth, DateTimeLayout)
+		if err != nil {
+			return err
+		}
+		if balance-loan.AmortizationSchedule[previousMonth].RemainingPrincipal >= loan.EarlyPayoffThreshold {
+			logger.Debug(fmt.Sprintf("%s: based on threshold paying off asset %s for %.2f", currentMonth, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal),
 				zap.String("op", "config.CheckEarlyPayoffThreshold"),
 			)
-			amount = loan.AmortizationSchedule[previousDate].RemainingPrincipal - loan.AmortizationSchedule[date].RefundableEscrow
+			var finalPayment Payment
 			if loan.SellProperty {
-				amount -= loan.Principal * (1.0 + loan.ValueChange/100.0)
-				logger.Debug(fmt.Sprintf("%s: selling asset %s for %.2f", date, loan.Name, loan.Principal*(1.0+loan.ValueChange/100.0)),
+				finalPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.AmortizationSchedule[currentMonth].RefundableEscrow - loan.Principal*(1.0+loan.ValueChange/100.0)
+				loan.AmortizationSchedule[currentMonth] = finalPayment
+				logger.Debug(fmt.Sprintf("%s: selling asset %s for %.2f", currentMonth, loan.Name, loan.Principal*(1.0+loan.ValueChange/100.0)),
 					zap.String("op", "config.CheckEarlyPayoffThreshold"),
 				)
+			} else {
+				finalPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.AmortizationSchedule[currentMonth].RefundableEscrow
+				loan.AmortizationSchedule[currentMonth] = finalPayment
 			}
-			// Check scenario loans for erasure. TODO this method is not reliable,
-			// rework how the loan is passed around.
-			for i, scenario := range conf.Scenarios {
-				for j, scenarioLoan := range scenario.Loans {
-					if scenarioLoan.Name == loan.Name {
-						conf.Scenarios[i].Loans[j] = Loan{}
-						return amount, true
-					}
+
+			// Modify the remainder of the amortization schedule to null out payments
+			// and if we did not sell the property and did declare escrow then handle
+			// converting that into equivalent annual payments.
+			loan.EarlyPayoffThreshold = 0
+			for {
+				if currentMonth == deathDate {
+					break
+				}
+				previousMonth = currentMonth
+				currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
+				if err != nil {
+					return err
+				}
+				december, err := CheckMonth(currentMonth, "12")
+				if err != nil {
+					return err
+				}
+				if december && loan.Escrow > 0 {
+					var escrowPayment Payment
+					escrowPayment.Payment = loan.Escrow * 12
+					loan.AmortizationSchedule[currentMonth] = escrowPayment
+				} else {
+					delete(loan.AmortizationSchedule, currentMonth)
 				}
 			}
 
-			// Check common loans for erasure.
-			for i, commonLoan := range conf.Common.Loans {
-				if commonLoan.Name == loan.Name {
-					conf.Common.Loans[i] = Loan{}
-					return amount, true
-				}
-			}
 		}
 	}
-	return amount, false
+	return nil
 }
 
 // CheckMonth identifies whether a given date is in the month indicated by the
@@ -415,4 +428,17 @@ func CheckMonth(date string, month string) (bool, error) {
 	} else {
 		return false, nil
 	}
+}
+
+// DateBeforeDate returns true if firstDate is strictly before secondDate.
+func DateBeforeDate(firstDate string, secondDate string) (bool, error) {
+	firstDateT, err := time.Parse(DateTimeLayout, firstDate)
+	if err != nil {
+		return false, err
+	}
+	secondDateT, err := time.Parse(DateTimeLayout, secondDate)
+	if err != nil {
+		return false, err
+	}
+	return firstDateT.Before(secondDateT), nil
 }
