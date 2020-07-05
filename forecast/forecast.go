@@ -36,7 +36,7 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 		result.Data[startDate] = conf.Common.StartingValue
 		previousDate := startDate
 		for {
-			date, err := config.IncrementDate(previousDate, config.DateTimeLayout)
+			date, err := config.OffsetDate(previousDate, config.DateTimeLayout, 1)
 			if err != nil {
 				return results, err
 			}

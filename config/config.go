@@ -165,26 +165,14 @@ func (event *Event) FormDateList(conf Configuration) error {
 	return nil
 }
 
-// IncrementDate returns the next string-formatted date following the input
-// date; this is always a 1-month increment.
-func IncrementDate(previousDate, layout string) (string, error) {
-	t, err := time.Parse(layout, previousDate)
+// OffsetDate returns the string-formatted date offset by the given number of
+// months relative to the given date.
+func OffsetDate(date, layout string, months int) (string, error) {
+	t, err := time.Parse(layout, date)
 	if err != nil {
-		return previousDate, err
+		return date, err
 	}
-	date := t.AddDate(0, 1, 0).Format(layout)
-	return date, nil
-}
-
-// DecrementDate returns the previous string-formatted date prior to the input
-// date; this is always a 1-month decrement.
-func DecrementDate(currentDate, layout string) (string, error) {
-	t, err := time.Parse(layout, currentDate)
-	if err != nil {
-		return currentDate, err
-	}
-	date := t.AddDate(0, -1, 0).Format(layout)
-	return date, nil
+	return t.AddDate(0, months, 0).Format(layout), nil
 }
 
 // ProcessLoans iterates through all loans and produces the amortization
@@ -193,7 +181,7 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	// First handle the processing for all Loans in Scenarios.
 	for i, scenario := range conf.Scenarios {
 		for j := range scenario.Loans {
-			conf.Scenarios[i].Loans[j].ApplyDownPayment()
+			conf.Scenarios[i].Loans[j].ApplyDownPayment(logger)
 			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule(logger, *conf)
 			if err != nil {
 				return err
@@ -203,7 +191,7 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 
 	// Next handle the processing for the Common Loans.
 	for i := range conf.Common.Loans {
-		conf.Common.Loans[i].ApplyDownPayment()
+		conf.Common.Loans[i].ApplyDownPayment(logger)
 		err := conf.Common.Loans[i].GetAmortizationSchedule(logger, *conf)
 		if err != nil {
 			return err
@@ -215,8 +203,11 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 
 // ApplyDownPayment modifies the loan principal to reflect any down payment
 // so that the amortization schedules is computed correctly.
-func (loan *Loan) ApplyDownPayment() {
+func (loan *Loan) ApplyDownPayment(logger *zap.Logger) {
 	loan.Principal -= loan.DownPayment
+	logger.Debug(fmt.Sprintf("loan %s: applying down payment %s to principal %s", loan.Name, loan.DownPayment, loan.Principal),
+		zap.String("op", "config.ApplyDownPayment"),
+	)
 }
 
 // GetAmortizationSchedule computes the amortization schedule for a given Loan.
@@ -245,7 +236,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 
 	// Iterate over the remainder of the term.
 	previousMonth := loan.StartDate
-	currentMonth, err := IncrementDate(previousMonth, DateTimeLayout)
+	currentMonth, err := OffsetDate(previousMonth, DateTimeLayout, 1)
 	if err != nil {
 		return err
 	}
@@ -293,7 +284,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 						loan.AmortizationSchedule[currentMonth] = escrowPayment
 					}
 					previousMonth = currentMonth
-					currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
+					currentMonth, err = OffsetDate(currentMonth, DateTimeLayout, 1)
 					if err != nil {
 						return err
 					}
@@ -337,7 +328,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 						loan.AmortizationSchedule[currentMonth] = escrowPayment
 					}
 					previousMonth = currentMonth
-					currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
+					currentMonth, err = OffsetDate(currentMonth, DateTimeLayout, 1)
 					if err != nil {
 						return err
 					}
@@ -345,7 +336,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 			}
 		}
 		previousMonth = currentMonth
-		currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
+		currentMonth, err = OffsetDate(currentMonth, DateTimeLayout, 1)
 		if err != nil {
 			return err
 		}
@@ -366,7 +357,7 @@ func (loan *Loan) CheckEarlyPayoffThreshold(logger *zap.Logger, currentMonth str
 		return note, err
 	}
 	if loan.EarlyPayoffThreshold > 0 && started {
-		previousMonth, err := DecrementDate(currentMonth, DateTimeLayout)
+		previousMonth, err := OffsetDate(currentMonth, DateTimeLayout, -1)
 		if err != nil {
 			return note, err
 		}
@@ -397,7 +388,7 @@ func (loan *Loan) CheckEarlyPayoffThreshold(logger *zap.Logger, currentMonth str
 					break
 				}
 				previousMonth = currentMonth
-				currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
+				currentMonth, err = OffsetDate(currentMonth, DateTimeLayout, 1)
 				if err != nil {
 					return note, err
 				}
