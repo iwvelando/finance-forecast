@@ -4,6 +4,17 @@
 
 Finance Forecast is meant to be a simple tool to read in a config file that outlines various financial events (i.e. anything related to income or spending) and associated dates and then run simulations on one or more scenarios to see how these turn out. The more specific the events are the more accurate the simulation should be. Output defaults to printing to the console on STDOUT in a pretty format, but CSV format for easy import to other software may also be specified.
 
+## Assumptions
+
+### Loan Handling
+
+The simulation makes some assumptions regarding escrow handling for simplicity's sake; if your needs require more precise handling then you could handle escrow using events and not define it (or set it to 0) in the loan.
+
+* If escrow is defined the simulation assumes that the accumulated escrow for that year will be refunded if:
+  1. The loan is paid off early (but not on December)
+  1. The loan matures (but not on December)
+* If escrow is defined and the asset is _not_ sold off then the escrow will be extrapolated to an annual expense paid in December
+
 ## Usage
 
 Run `finance-forecast --help` to print command-line flags which include specifying the YAML-formatted config file's location and the output format.

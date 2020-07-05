@@ -70,6 +70,7 @@ type Payment struct {
 	Principal          float64
 	Interest           float64
 	RemainingPrincipal float64
+	RefundableEscrow   float64
 }
 
 // LoadConfiguration takes a file path as input and loads the YAML-formatted
@@ -175,6 +176,17 @@ func IncrementDate(previousDate, layout string) (string, error) {
 	return date, nil
 }
 
+// DecrementDate returns the previous string-formatted date prior to the input
+// date; this is always a 1-month decrement.
+func DecrementDate(currentDate, layout string) (string, error) {
+	t, err := time.Parse(layout, currentDate)
+	if err != nil {
+		return currentDate, err
+	}
+	date := t.AddDate(0, -1, 0).Format(layout)
+	return date, nil
+}
+
 // ProcessLoans iterates through all loans and produces the amortization
 // schedules.
 func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
@@ -182,7 +194,7 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	for i, scenario := range conf.Scenarios {
 		for j := range scenario.Loans {
 			conf.Scenarios[i].Loans[j].ApplyDownPayment()
-			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule(logger)
+			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule(logger, *conf)
 			if err != nil {
 				return err
 			}
@@ -192,7 +204,7 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	// Next handle the processing for the Common Loans.
 	for i := range conf.Common.Loans {
 		conf.Common.Loans[i].ApplyDownPayment()
-		err := conf.Common.Loans[i].GetAmortizationSchedule(logger)
+		err := conf.Common.Loans[i].GetAmortizationSchedule(logger, *conf)
 		if err != nil {
 			return err
 		}
@@ -208,7 +220,12 @@ func (loan *Loan) ApplyDownPayment() {
 }
 
 // GetAmortizationSchedule computes the amortization schedule for a given Loan.
-func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger) error {
+// This will also take into account optional configuration such as down
+// payments, early payoff dates, and selling property on payoff (for example
+// when trading in vehicles or upgrading homes). TODO this function is a mouth
+// full and is a candidate for being revised.
+func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration) error {
+	// Compute periodic payment fundamentals.
 	periodicInterestRate := loan.InterestRate / (100.0 * 12.0)
 	power := math.Pow((1.00 + periodicInterestRate), float64(loan.Term))
 	discountFactor := (power - 1.00) / power
@@ -216,12 +233,14 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger) error {
 
 	loan.AmortizationSchedule = make(map[string]Payment)
 
-	// Handle the first month individually.
+	// Handle the first month individually. TODO consider using a ghost point
+	// to prevent having to treat this differently.
 	var firstPayment Payment
 	firstPayment.Payment = loanPayment + loan.Escrow + loan.DownPayment
 	firstPayment.Interest = loan.Principal * loan.InterestRate / (100.0 * 12.0)
 	firstPayment.Principal = loanPayment - firstPayment.Interest
 	firstPayment.RemainingPrincipal = loan.Principal - firstPayment.Principal
+	firstPayment.RefundableEscrow = loan.Escrow
 	loan.AmortizationSchedule[loan.StartDate] = firstPayment
 
 	// Iterate over the remainder of the term.
@@ -233,30 +252,66 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger) error {
 
 	for month := 2; month <= loan.Term; month++ {
 		var currentPayment Payment
+
+		// Calculate refundable escrow
+		january, err := CheckMonth(currentMonth, "01")
+		if err != nil {
+			return err
+		}
+		if january {
+			currentPayment.RefundableEscrow = 0.00
+		} else {
+			currentPayment.RefundableEscrow = loan.AmortizationSchedule[previousMonth].RefundableEscrow + loan.Escrow
+		}
+
 		if loan.EarlyPayoffDate == currentMonth {
 			if loan.SellProperty {
-				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.Principal*(1.0+loan.ValueChange/100.0)
+				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.Principal*(1.0+loan.ValueChange/100.0) - currentPayment.RefundableEscrow
 				logger.Debug(fmt.Sprintf("%s: paying off asset %s for %.2f and selling for %.2f", loan.EarlyPayoffDate, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.Principal*(1.0+loan.ValueChange/100.0)),
 					zap.String("op", "config.GetAmortizationSchedule"),
 				)
+				loan.AmortizationSchedule[currentMonth] = currentPayment
 			} else {
-				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal
+				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - currentPayment.RefundableEscrow
 				logger.Debug(fmt.Sprintf("%s: paying off asset %s for %.2f", loan.EarlyPayoffDate, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal),
 					zap.String("op", "config.GetAmortizationSchedule"),
 				)
+				loan.AmortizationSchedule[currentMonth] = currentPayment
+				// Since we paid off the loan but did not sell the asset we will
+				// extrapolate the escrow to be paid on Decembers.
+				for {
+					if currentMonth == conf.Common.DeathDate {
+						break
+					}
+					december, err := CheckMonth(currentMonth, "12")
+					if err != nil {
+						return err
+					}
+					if december {
+						var escrowPayment Payment
+						escrowPayment.Payment = loan.Escrow * 12
+						//escrowPayment.Payment = 0.00
+						loan.AmortizationSchedule[currentMonth] = escrowPayment
+					}
+					previousMonth = currentMonth
+					currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
+					if err != nil {
+						return err
+					}
+				}
 			}
-			currentPayment.Interest = 0.00
-			currentPayment.Principal = 0.00
-			currentPayment.RemainingPrincipal = 0.00
-			loan.AmortizationSchedule[currentMonth] = currentPayment
 			break
 		} else {
 			currentPayment.Payment = loanPayment + loan.Escrow
 			currentPayment.Interest = loan.AmortizationSchedule[previousMonth].RemainingPrincipal * loan.InterestRate / (100.0 * 12.0)
 			currentPayment.Principal = loanPayment - currentPayment.Interest
 			if month == loan.Term {
-				// We will get machine error otherwise so just set to 0
+				// We will get machine error otherwise so just set to 0.
 				currentPayment.RemainingPrincipal = 0.00
+				// Incorporate the expected escrow refund; the RedunableEscrow value
+				// tracks the refundable amount for early payoffs so we need to reduce
+				// further by an escrow payment
+				currentPayment.Payment -= (currentPayment.RefundableEscrow + loan.Escrow)
 			} else {
 				currentPayment.RemainingPrincipal = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - currentPayment.Principal
 			}
@@ -266,31 +321,67 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger) error {
 				}
 			}
 			loan.AmortizationSchedule[currentMonth] = currentPayment
+			// Since the loan matured we will extrapolate the escrow to be paid on
+			// Decembers.
+			if month == loan.Term {
+				for {
+					if currentMonth == conf.Common.DeathDate {
+						break
+					}
+					december, err := CheckMonth(currentMonth, "12")
+					if err != nil {
+						return err
+					}
+					if december {
+						var escrowPayment Payment
+						escrowPayment.Payment = loan.Escrow * 12
+						//escrowPayment.Payment = 0.00
+						loan.AmortizationSchedule[currentMonth] = escrowPayment
+					}
+					previousMonth = currentMonth
+					currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
+					if err != nil {
+						return err
+					}
+				}
+			}
 		}
 		previousMonth = currentMonth
 		currentMonth, err = IncrementDate(currentMonth, DateTimeLayout)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
 // CheckEarlyPayoffThreshold checks for whether or not it is time to payoff a
-// loan early based on an optionally-configured threshold.
+// loan early based on an optionally-configured threshold. Note that escrow
+// refunds are not factored into the threshold comparison because in reality
+// those can take some time to process (even though the simulation acts as
+// though an escrow refund is processed immediately).
 func (conf *Configuration) CheckEarlyPayoffThreshold(logger *zap.Logger, date string, loan Loan, balance float64) (float64, bool) {
 	amount := 0.0
+	previousDate, err := DecrementDate(date, DateTimeLayout)
+	if err != nil {
+		// TODO fix this
+		return amount, false
+	}
 	if loan.EarlyPayoffThreshold > 0 {
 		if balance-loan.AmortizationSchedule[date].RemainingPrincipal >= loan.EarlyPayoffThreshold {
-			logger.Debug(fmt.Sprintf("%s: based on threshold paying off asset %s for %.2f", date, loan.Name, loan.AmortizationSchedule[date].RemainingPrincipal),
+			logger.Debug(fmt.Sprintf("%s: based on threshold paying off asset %s for %.2f", date, loan.Name, loan.AmortizationSchedule[previousDate].RemainingPrincipal),
 				zap.String("op", "config.CheckEarlyPayoffThreshold"),
 			)
-			amount = loan.AmortizationSchedule[date].RemainingPrincipal
+			amount = loan.AmortizationSchedule[previousDate].RemainingPrincipal - loan.AmortizationSchedule[date].RefundableEscrow
 			if loan.SellProperty {
 				amount -= loan.Principal * (1.0 + loan.ValueChange/100.0)
 				logger.Debug(fmt.Sprintf("%s: selling asset %s for %.2f", date, loan.Name, loan.Principal*(1.0+loan.ValueChange/100.0)),
 					zap.String("op", "config.CheckEarlyPayoffThreshold"),
 				)
 			}
-			// Check scenario loans for erasure.
+			// Check scenario loans for erasure. TODO this method is not reliable,
+			// rework how the loan is passed around.
 			for i, scenario := range conf.Scenarios {
 				for j, scenarioLoan := range scenario.Loans {
 					if scenarioLoan.Name == loan.Name {
@@ -310,4 +401,18 @@ func (conf *Configuration) CheckEarlyPayoffThreshold(logger *zap.Logger, date st
 		}
 	}
 	return amount, false
+}
+
+// CheckMonth identifies whether a given date is in the month indicated by the
+// numeric representation e.g. 01 = January and 12 = December.
+func CheckMonth(date string, month string) (bool, error) {
+	dateT, err := time.Parse(DateTimeLayout, date)
+	if err != nil {
+		return false, err
+	}
+	if dateT.Format("01") == month {
+		return true, nil
+	} else {
+		return false, nil
+	}
 }
