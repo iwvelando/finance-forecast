@@ -6,6 +6,10 @@ Finance Forecast is meant to be a simple tool to read in a config file that outl
 
 ## Assumptions
 
+### Simulation
+
+* The simulation starts processing events the next calendar month after when this is run; in other words the starting value should be taking into account the current month.
+
 ### Loan Handling
 
 The simulation makes some assumptions regarding escrow handling for simplicity's sake; if your needs require more precise handling then you could handle escrow using events and not define it (or set it to 0) in the loan.
@@ -55,6 +59,7 @@ Output:
 
 * Implement tests
 * Consider methods for simple optimization by configuring supported values as within a range and optimize a cost function
+* Support periodic extra principal payments on loans
 * Handle inflation
 * Handle investment scenarios with reallocating asset distribution over time
 * Ability to declare categories for events and tabulate average spending and income based on category
