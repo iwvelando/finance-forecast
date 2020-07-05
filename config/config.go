@@ -204,10 +204,10 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 // ApplyDownPayment modifies the loan principal to reflect any down payment
 // so that the amortization schedules is computed correctly.
 func (loan *Loan) ApplyDownPayment(logger *zap.Logger) {
-	loan.Principal -= loan.DownPayment
-	logger.Debug(fmt.Sprintf("loan %s: applying down payment %s to principal %s", loan.Name, loan.DownPayment, loan.Principal),
+	logger.Debug(fmt.Sprintf("loan %s: applying down payment %.2f to principal %.2f", loan.Name, loan.DownPayment, loan.Principal),
 		zap.String("op", "config.ApplyDownPayment"),
 	)
+	loan.Principal -= loan.DownPayment
 }
 
 // GetAmortizationSchedule computes the amortization schedule for a given Loan.
