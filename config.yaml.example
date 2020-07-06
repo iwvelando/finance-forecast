@@ -1,11 +1,24 @@
+# common events and loans are shared among all scenarios you are tracking.
 common:
-  startingValue: 30000 # Set your starting balance; this simulation currently only tracks one balance
-  deathDate: 2090-01 # Set your estimated death date; the simulation ends here
-  events: # common events will be shared by all scenarios
+  # startingValue: this is the expected starting balance as of the end of this
+  # month. This simulation currently only tracks one balance.
+  startingValue: 30000.00
+  # deathDate: this is the estimated death date; the simulation ends here.
+  deathDate: 2090-01
+  # events: these are common financial events shared by all scenarios.
+  events:
+    # name: all names are arbitrary; they are sometimes referred to in
+    # debug-level messages.
     - name: Social security
-      amount: 1000.00 # Positive amounts are income while negative amounts are spending
-      frequency: 1 # Frequency is measured in months; frequency of 1 is monthly, frequency of 3 is quarterly, etc
-      startDate: 2050-01 # startDate optionally specifies when an event begins; if unspecified the current date is the start
+      # amount: for events, positive amounts are income while negative amounts
+      # are spending.
+      amount: 1000.00
+      # frequency: this is how often the event happens measured in months where
+      # frequency of 1 is monthly, frequency of 3 is quarterly, etc.
+      frequency: 1
+      # startDate: optionally specifies when an event begins; if unspecified the
+      # current month is the start.
+      startDate: 2050-01
     - name: Service quarterly bill
       amount: -10.00
       frequency: 3
@@ -13,20 +26,64 @@ common:
     - name: Other service monthly bill
       amount: -35.00
       frequency: 1
+  # loans: these are common loans shared by all scenarios.
+  loans:
+    - name: Auto loan
+      # principal: the original principal of the loan prior to down payments.
+      # Note that we use positive values here.
+      principal: 30000.00
+      # downPayment: optionally specify a down payment to be applied to the
+      # principal.
+      downPayment: 5000.00
+      # interestRate: expresses the interest rate as a percent.
+      interestRate: 3.1
+      # term: this is the loan term in months.
+      term: 72
+      startDate: 2020-01
 scenarios:
   - name: current path
-    active: true # scenarios may be disabled
+    # active: this allows disabling scenarios.
+    active: true
     events:
       - name: Income
         amount: 1234.56
         frequency: 1
-        endDate: 2050-01 # endDate optionally specifies when an event ends; if unspecified the deathDate is the end
+        # endDate: optionally specifies when an event ends; if unspecified the
+        # deathDate is the end.
+        endDate: 2050-01
       - name: Bonus
         amount: 7891.23
-        frequency: 1
-        startDate: 2020-12 # one-time events are specified with a frequency of 1 and startDate = endDate
+        frequency: 12
+        # if startDate == endDate then this is a one-time event (frequency is
+        # effectively ignored)
+        startDate: 2020-12
         endDate: 2020-12
-  - name: alternative path
+    loans:
+      - name: 1234 Street Address
+        principal: 150000.00
+        downPayment: 10000.00
+        interestRate: 3.75
+        term: 360
+        startDate: 2018-01
+        # escrow: optionally specify escrow as part of the loan definition.
+        # Alternatively you can leave this blank and handle any escrow as
+        # events. If escrow is specified and the property is *not sold* then
+        # when the loan ends either due to maturity or early payoff the escrow
+        # paid that year so far will be refunded and the amount will be
+        # multiplied by 12 and be paid every December until the deathDate.
+        escrow: 500.00
+        # mortgageInsurance: enter mortgage insurance which will be added to
+        # your monthly payment until the cutoff is reached and the insurance is
+        # terminated.
+        mortgageInsurance: 50.00
+        # mortgageInsuranceCutoff: enter the percent of the principal value
+        # that needs to be reached in order to have mortgage insurnace ended.
+        mortgageInsuranceCutoff: 78.00
+        # earlyPayoffThreshold: if this is specified then when the running
+        # balance minus the estimated loan payoff amount is equal to or greater
+        # than this threshold the simulation will pay off the loan early.
+        earlyPayoffThreshold: 5000.00
+  - name: new home purchase
     active: true
     events:
       - name: Income
@@ -38,3 +95,34 @@ scenarios:
         frequency: 1
         startDate: 2020-10
         endDate: 2050-01
+    loans:
+      - name: 1234 Street Address
+        principal: 150000.00
+        downPayment: 10000.00
+        interestRate: 3.75
+        term: 360
+        startDate: 2018-01
+        escrow: 500.00
+        mortgageInsurance: 50.00
+        mortgageInsuranceCutoff: 78.00
+        # earlyPayoffDate: optionally enter a date when you want to pay off the
+        # loan early.
+        earlyPayoffDate: 2022-06
+        # sellProperty: indicate whether you want to sell the property at the
+        # time the loan ends. This only takes effect when earlyPayoffDate is
+        # set and happens before the end of the loan or when
+        # earlyPayoffThreshold is set and happens before the end of the loan.
+        sellProperty: true
+        # valueChange: optionally enter a positive a negative value indicating
+        # the percent change in property value compared to the principal. A
+        # value of 2.00% means the property has increased in value by 2.00% and
+        # a value of -2.00% means the property has decreased in value by 2.00%.
+        valueChange: 2.00
+      - name: 5678 Street Address
+        principal: 200000.00
+        downPayment: 40000.00
+        interestRate: 2.75
+        term: 360
+        startDate: 2022-06
+        escrow: 600.00
+        earlyPayoffThreshold: 5000.00
