@@ -181,7 +181,6 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	// First handle the processing for all Loans in Scenarios.
 	for i, scenario := range conf.Scenarios {
 		for j := range scenario.Loans {
-			conf.Scenarios[i].Loans[j].ApplyDownPayment(logger)
 			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule(logger, *conf)
 			if err != nil {
 				return err
@@ -191,7 +190,6 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 
 	// Next handle the processing for the Common Loans.
 	for i := range conf.Common.Loans {
-		conf.Common.Loans[i].ApplyDownPayment(logger)
 		err := conf.Common.Loans[i].GetAmortizationSchedule(logger, *conf)
 		if err != nil {
 			return err
@@ -199,15 +197,6 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	}
 
 	return nil
-}
-
-// ApplyDownPayment modifies the loan principal to reflect any down payment
-// so that the amortization schedules is computed correctly.
-func (loan *Loan) ApplyDownPayment(logger *zap.Logger) {
-	logger.Debug(fmt.Sprintf("loan %s: applying down payment %.2f to principal %.2f", loan.Name, loan.DownPayment, loan.Principal),
-		zap.String("op", "config.ApplyDownPayment"),
-	)
-	loan.Principal -= loan.DownPayment
 }
 
 // GetAmortizationSchedule computes the amortization schedule for a given Loan.
@@ -220,7 +209,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 	periodicInterestRate := loan.InterestRate / (100.0 * 12.0)
 	power := math.Pow((1.00 + periodicInterestRate), float64(loan.Term))
 	discountFactor := (power - 1.00) / power
-	loanPayment := loan.Principal * periodicInterestRate / discountFactor
+	loanPayment := (loan.Principal - loan.DownPayment) * periodicInterestRate / discountFactor
 
 	loan.AmortizationSchedule = make(map[string]Payment)
 
@@ -228,9 +217,9 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 	// to prevent having to treat this differently.
 	var firstPayment Payment
 	firstPayment.Payment = loanPayment + loan.Escrow + loan.DownPayment
-	firstPayment.Interest = loan.Principal * loan.InterestRate / (100.0 * 12.0)
+	firstPayment.Interest = (loan.Principal - loan.DownPayment) * loan.InterestRate / (100.0 * 12.0)
 	firstPayment.Principal = loanPayment - firstPayment.Interest
-	firstPayment.RemainingPrincipal = loan.Principal - firstPayment.Principal
+	firstPayment.RemainingPrincipal = (loan.Principal - loan.DownPayment) - firstPayment.Principal
 	firstPayment.RefundableEscrow = loan.Escrow
 	loan.AmortizationSchedule[loan.StartDate] = firstPayment
 
