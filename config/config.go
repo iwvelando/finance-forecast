@@ -18,18 +18,20 @@ type Configuration struct {
 	Scenarios []Scenario
 }
 
-// Common holds the shared parameters and events between all scenarios.
+// Common holds the shared parameters, events, and loans between all scenarios.
 type Common struct {
 	StartingValue float64
 	DeathDate     string
 	Events        []Event
+	Loans         []Loan
 }
 
-// Scenario holds all events for a given scenario.
+// Scenario holds all events and loans for a given scenario.
 type Scenario struct {
 	Name   string
 	Active bool
 	Events []Event
+	Loans  []Loan
 }
 
 // Event indicates a financial event.
@@ -65,32 +67,30 @@ func LoadConfiguration(configPath string) (*Configuration, error) {
 
 // ParseDateLists looks at every date provided in the configuration and
 // parses it into a time.Time which is stored back into an Event.DateList.
-func ParseDateLists(conf Configuration) (Configuration, error) {
+func (conf *Configuration) ParseDateLists() error {
 	// First handle the parsing for all Events in Scenarios.
 	for i, scenario := range conf.Scenarios {
-		for j, event := range scenario.Events {
-			dateList, err := FormDateList(event, conf)
+		for j := range scenario.Events {
+			err := conf.Scenarios[i].Events[j].FormDateList(*conf)
 			if err != nil {
-				return conf, err
+				return err
 			}
-			conf.Scenarios[i].Events[j].DateList = dateList
 		}
 	}
 
 	// Next handle the parsing for the Common Events.
-	for i, event := range conf.Common.Events {
-		dateList, err := FormDateList(event, conf)
+	for i := range conf.Common.Events {
+		err := conf.Common.Events[i].FormDateList(*conf)
 		if err != nil {
-			return conf, err
+			return err
 		}
-		conf.Common.Events[i].DateList = dateList
 	}
 
-	return conf, nil
+	return nil
 }
 
 // FormDateList handles the date to time.Time parsing for one given event.
-func FormDateList(event Event, conf Configuration) ([]time.Time, error) {
+func (event *Event) FormDateList(conf Configuration) error {
 	dateList := make([]time.Time, 1)
 	var startDateT time.Time
 	var err error
@@ -99,12 +99,12 @@ func FormDateList(event Event, conf Configuration) ([]time.Time, error) {
 	if event.StartDate == "" {
 		startDateT, err = time.Parse(DateTimeLayout, time.Now().Format(DateTimeLayout))
 		if err != nil {
-			return dateList, err
+			return err
 		}
 	} else {
 		startDateT, err = time.Parse(DateTimeLayout, event.StartDate)
 		if err != nil {
-			return dateList, err
+			return err
 		}
 	}
 
@@ -114,7 +114,7 @@ func FormDateList(event Event, conf Configuration) ([]time.Time, error) {
 	}
 	endDateT, err := time.Parse(DateTimeLayout, event.EndDate)
 	if err != nil {
-		return dateList, err
+		return err
 	}
 
 	// Identify all dates where an event takes place and aggregate them in
@@ -131,6 +131,7 @@ func FormDateList(event Event, conf Configuration) ([]time.Time, error) {
 			dateList = append(dateList, nextDate)
 		}
 	}
+	event.DateList = dateList
 
-	return dateList, nil
+	return nil
 }

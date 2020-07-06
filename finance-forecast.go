@@ -9,6 +9,7 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"sort"
+	"strings"
 )
 
 func main() {
@@ -42,9 +43,18 @@ func main() {
 	}
 
 	// Process the Event dates into time.Time.
-	*conf, err = config.ParseDateLists(*conf)
+	err = conf.ParseDateLists()
 	if err != nil {
 		logger.Fatal("failed to parse date lists",
+			zap.String("op", "main"),
+			zap.Error(err),
+		)
+	}
+
+	// Process the amortization schedules for all loans.
+	err = conf.ProcessLoans(logger)
+	if err != nil {
+		logger.Fatal("failed to process loan amortization schedules",
 			zap.String("op", "main"),
 			zap.Error(err),
 		)
@@ -73,8 +83,8 @@ func PrettyFormat(results []forecast.Forecast) {
 	p := message.NewPrinter(language.English)
 	for _, result := range results {
 		fmt.Printf("--- Results for scenario %s ---\n", result.Name)
-		fmt.Printf("Date    | Amount\n")
-		fmt.Printf("____    | _____________\n")
+		fmt.Printf("Date    | Amount        | Notes\n")
+		fmt.Printf("____    | _____________ | _____\n")
 		dates := make([]string, len(result.Data))
 		n := 0
 		for date := range result.Data {
@@ -83,7 +93,7 @@ func PrettyFormat(results []forecast.Forecast) {
 		}
 		sort.Strings(dates)
 		for _, date := range dates {
-			p.Printf("%s | $%.2f\n", date, result.Data[date])
+			p.Printf("%s | $%.2f | %s\n", date, result.Data[date], strings.Join(result.Notes[date], ","))
 		}
 		if len(results) > 1 {
 			fmt.Printf("\n")
@@ -103,13 +113,14 @@ func CsvFormat(results []forecast.Forecast) {
 	sort.Strings(dates)
 	fmt.Printf(`"date"`)
 	for _, result := range results {
-		fmt.Printf(`,"amount (%s)"`, result.Name)
+		fmt.Printf(`,"amount (%s)","notes (%s)"`, result.Name, result.Name)
 	}
 	fmt.Printf("\n")
 	for _, date := range dates {
 		fmt.Printf(`"%s"`, date)
 		for _, result := range results {
 			fmt.Printf(`,"%.2f"`, result.Data[date])
+			fmt.Printf(`,"%s"`, strings.Join(result.Notes[date], ","))
 		}
 		fmt.Printf("\n")
 	}

@@ -11,15 +11,16 @@ import (
 
 // Forecast holds all information related to a specific forecast.
 type Forecast struct {
-	Name string
-	Data map[string]float64
+	Name  string
+	Data  map[string]float64
+	Notes map[string][]string
 }
 
 // GetForecast processes the Forecasts for all Scenarios.
 func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, error) {
 	var results []Forecast
 	startDate := time.Now().Format(config.DateTimeLayout)
-	for _, scenario := range conf.Scenarios {
+	for i, scenario := range conf.Scenarios {
 		if !scenario.Active {
 			logger.Debug(fmt.Sprintf("skipping scenario %s because it is inactive", scenario.Name),
 				zap.String("op", "forecast.GetForecast"),
@@ -31,10 +32,11 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 		var result Forecast
 		result.Name = scenario.Name
 		result.Data = make(map[string]float64)
+		result.Notes = make(map[string][]string)
 		result.Data[startDate] = conf.Common.StartingValue
 		previousDate := startDate
 		for {
-			date, err := IncrementDate(previousDate, config.DateTimeLayout)
+			date, err := config.OffsetDate(previousDate, config.DateTimeLayout, 1)
 			if err != nil {
 				return results, err
 			}
@@ -46,7 +48,27 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			if err != nil {
 				return results, err
 			}
-			result.Data[date] = result.Data[previousDate] + eventsAmount + commonEventsAmount
+			for j := range conf.Scenarios[i].Loans {
+				note, err := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, result.Data[previousDate]+eventsAmount+commonEventsAmount)
+				if err != nil {
+					return results, err
+				}
+				if note != "" {
+					result.Notes[date] = append(result.Notes[date], note)
+				}
+			}
+			for j := range conf.Common.Loans {
+				note, err := conf.Common.Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, result.Data[previousDate]+eventsAmount+commonEventsAmount)
+				if err != nil {
+					return results, err
+				}
+				if note != "" {
+					result.Notes[date] = append(result.Notes[date], note)
+				}
+			}
+			loansAmount := HandleLoans(logger, date, scenario.Loans)
+			commonLoansAmount := HandleLoans(logger, date, conf.Common.Loans)
+			result.Data[date] = result.Data[previousDate] + eventsAmount + commonEventsAmount + loansAmount + commonLoansAmount
 			if date == conf.Common.DeathDate {
 				break
 			}
@@ -56,17 +78,6 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 	}
 
 	return results, nil
-}
-
-// IncrementDate returns the next string-formatted date following the input
-// date; this is always a 1-month increment.
-func IncrementDate(previousDate string, layout string) (string, error) {
-	t, err := time.Parse(layout, previousDate)
-	if err != nil {
-		return previousDate, err
-	}
-	nextDate := t.AddDate(0, 1, 0).Format(layout)
-	return nextDate, nil
 }
 
 // HandleEvents sums all amounts for Events that occur on the input date.
@@ -88,4 +99,20 @@ func HandleEvents(logger *zap.Logger, date string, events []config.Event, layout
 		}
 	}
 	return amount, nil
+}
+
+// HandleLoans identifies any loan-based financial events that occur on the
+// input date.
+func HandleLoans(logger *zap.Logger, date string, loans []config.Loan) float64 {
+	amount := 0.0
+	for _, loan := range loans {
+		if payment, present := loan.AmortizationSchedule[date]; present {
+			logger.Debug(fmt.Sprintf("%s: loan %s is active for amount %.2f", date, loan.Name, payment.Payment),
+				zap.String("op", "forecast.HandleLoans"),
+			)
+			amount -= payment.Payment
+			continue
+		}
+	}
+	return amount
 }
