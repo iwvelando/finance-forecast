@@ -15,8 +15,8 @@ import (
 func main() {
 
 	// Initialize logging.
-	logger, err := zap.NewDevelopment()
-	//logger, err := zap.NewProduction()
+	//logger, err := zap.NewDevelopment()
+	logger, err := zap.NewProduction()
 	if err != nil {
 		fmt.Println("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to initiate logger\"}")
 		panic(err)
