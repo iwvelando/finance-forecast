@@ -148,18 +148,8 @@ scenarios:
         escrow: 600.00
         mortgageInsurance: 50.00
         mortgageInsuranceCutoff: 78.00
-        # earlyPayoffDate: optionally enter a date when you want to pay off the
-        # loan early.
         earlyPayoffDate: 2022-06
-        # sellProperty: indicate whether you want to sell the property at the
-        # time the loan ends. This only takes effect when earlyPayoffDate is
-        # set and happens before the end of the loan or when
-        # earlyPayoffThreshold is set and happens before the end of the loan.
         sellProperty: true
-        # valueChange: optionally enter a positive a negative value indicating
-        # the percent change in property value compared to the principal. A
-        # value of 2.00% means the property has increased in value by 2.00% and
-        # a value of -2.00% means the property has decreased in value by 2.00%.
         valueChange: 2.00
       - name: 5678 Street Address
         principal: 200000.00
@@ -169,6 +159,14 @@ scenarios:
         startDate: 2022-06
         escrow: 600.00
         earlyPayoffThreshold: 5000.00
+        # extraPrincipalPayments: you can configure one or more recurring or
+        # one-off extra principal payments; all the parameters from Events are
+        # supported; names are optional and just for the user's benefit.
         extraPrincipalPayments:
-          - amount: 1000.00
+          - amount: 100.00
             frequency: 1
+          - name: large one-off payment
+            amount: 29000.00
+            frequency: 1
+            startDate: 2023-06
+            endDate: 2023-06
