@@ -126,3 +126,49 @@ scenarios:
         startDate: 2022-06
         escrow: 600.00
         earlyPayoffThreshold: 5000.00
+  - name: new home purchase with extra principal payments
+    active: true
+    events:
+      - name: Income
+        amount: 1234.56
+        frequency: 1
+        endDate: 2020-09
+      - name: Income (new job)
+        amount: 2345.67
+        frequency: 1
+        startDate: 2020-10
+        endDate: 2050-01
+    loans:
+      - name: 1234 Street Address
+        principal: 150000.00
+        downPayment: 10000.00
+        interestRate: 3.75
+        term: 360
+        startDate: 2018-01
+        escrow: 600.00
+        mortgageInsurance: 50.00
+        mortgageInsuranceCutoff: 78.00
+        # earlyPayoffDate: optionally enter a date when you want to pay off the
+        # loan early.
+        earlyPayoffDate: 2022-06
+        # sellProperty: indicate whether you want to sell the property at the
+        # time the loan ends. This only takes effect when earlyPayoffDate is
+        # set and happens before the end of the loan or when
+        # earlyPayoffThreshold is set and happens before the end of the loan.
+        sellProperty: true
+        # valueChange: optionally enter a positive a negative value indicating
+        # the percent change in property value compared to the principal. A
+        # value of 2.00% means the property has increased in value by 2.00% and
+        # a value of -2.00% means the property has decreased in value by 2.00%.
+        valueChange: 2.00
+      - name: 5678 Street Address
+        principal: 200000.00
+        downPayment: 40000.00
+        interestRate: 2.75
+        term: 360
+        startDate: 2022-06
+        escrow: 600.00
+        earlyPayoffThreshold: 5000.00
+        extraPrincipalPayments:
+          - amount: 1000.00
+            frequency: 1
