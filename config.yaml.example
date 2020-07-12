@@ -126,3 +126,47 @@ scenarios:
         startDate: 2022-06
         escrow: 600.00
         earlyPayoffThreshold: 5000.00
+  - name: new home purchase with extra principal payments
+    active: true
+    events:
+      - name: Income
+        amount: 1234.56
+        frequency: 1
+        endDate: 2020-09
+      - name: Income (new job)
+        amount: 2345.67
+        frequency: 1
+        startDate: 2020-10
+        endDate: 2050-01
+    loans:
+      - name: 1234 Street Address
+        principal: 150000.00
+        downPayment: 10000.00
+        interestRate: 3.75
+        term: 360
+        startDate: 2018-01
+        escrow: 500.00
+        mortgageInsurance: 50.00
+        mortgageInsuranceCutoff: 78.00
+        earlyPayoffDate: 2022-06
+        sellProperty: true
+        valueChange: 2.00
+      - name: 5678 Street Address
+        principal: 200000.00
+        downPayment: 40000.00
+        interestRate: 2.75
+        term: 360
+        startDate: 2022-06
+        escrow: 600.00
+        earlyPayoffThreshold: 5000.00
+        # extraPrincipalPayments: you can configure one or more recurring or
+        # one-off extra principal payments; all the parameters from Events are
+        # supported; names are optional and just for the user's benefit.
+        extraPrincipalPayments:
+          - amount: 100.00
+            frequency: 1
+          - name: large one-off payment
+            amount: 29000.00
+            frequency: 1
+            startDate: 2023-06
+            endDate: 2023-06

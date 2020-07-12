@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"github.com/spf13/viper"
+	"math"
 	"time"
 )
 
@@ -76,6 +77,15 @@ func (conf *Configuration) ParseDateLists() error {
 				return err
 			}
 		}
+		// Check for extra principal payments within loans.
+		for j, loan := range scenario.Loans {
+			for k := range loan.ExtraPrincipalPayments {
+				err := conf.Scenarios[i].Loans[j].ExtraPrincipalPayments[k].FormDateList(*conf)
+				if err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	// Next handle the parsing for the Common Events.
@@ -83,6 +93,16 @@ func (conf *Configuration) ParseDateLists() error {
 		err := conf.Common.Events[i].FormDateList(*conf)
 		if err != nil {
 			return err
+		}
+	}
+
+	// Check for extra principal payments for common loans.
+	for i, loan := range conf.Common.Loans {
+		for j := range loan.ExtraPrincipalPayments {
+			err := conf.Common.Loans[i].ExtraPrincipalPayments[j].FormDateList(*conf)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -134,4 +154,10 @@ func (event *Event) FormDateList(conf Configuration) error {
 	event.DateList = dateList
 
 	return nil
+}
+
+// Round rounds a value to two decimals, i.e. to represent real currency. Used
+// for making logical comparisons.
+func Round(val float64) float64 {
+	return math.Round(val*100) / 100
 }
