@@ -36,29 +36,29 @@ finance-forecast -config=./config.yaml.example -output-format=csv
 Output:
 
 ```
-"date","amount (current path)","notes (current path)","amount (new home purchase)","notes (new home purchase)"
-"2020-07","30000.00","","30000.00",""
-"2020-08","29670.24","","29670.24",""
-"2020-09","29340.47","","29340.47",""
-"2020-10","29000.71","","30111.82",""
+"date","amount (current path)","notes (current path)","amount (new home purchase)","notes (new home purchase)","amount (new home purchase with extra principal payments)","notes (new home purchase with extra principal payments)"
+"2020-07","30000.00","","30000.00","","30000.00",""
+"2020-08","29670.24","","29670.24","","29670.24",""
+"2020-09","29340.47","","29340.47","","29340.47",""
 ...
-"2031-04","22984.27","","129321.71",""
-"2031-05","23085.46","","8730.89","paying off asset 5678 Street Address for 125301.49"
-"2031-06","23186.66","","11041.56",""
-"2031-07","23277.86","","13342.23",""
-"2031-08","23379.06","","15652.90",""
+"2030-10","22016.12","","122615.85","","83515.85",""
+"2030-11","22117.31","","123673.33","","11167.85","paying off asset 5678 Street Address for 80658.67"
+"2030-12","22218.51","","124730.82","","6278.52",""
+"2031-01","22309.71","","125778.30","","8579.19",""
+"2031-02","22410.91","","126835.79","","10889.86",""
+"2031-03","22512.11","","127893.27","","13200.53",""
+"2031-04","22603.31","","128940.75","","15501.20",""
+"2031-05","22704.50","","8349.93","paying off asset 5678 Street Address for 125301.49","17811.87",""
+"2031-06","22805.70","","10660.60","","20122.54",""
 ...
-"2089-09","285469.91","","566730.97",""
-"2089-10","286424.91","","567685.97",""
-"2089-11","287389.91","","568650.97",""
-"2089-12","282354.91","","562415.97",""
-"2090-01","283309.91","","563370.97",""
+"2089-11","286955.01","","568270.01","","577731.95",""
+"2089-12","281920.01","","562035.01","","571496.95",""
+"2090-01","282875.01","","562990.01","","572451.95",""
 ```
 
 ## Future Work
 
 * Implement tests
-* Support periodic extra principal payments on loans
 * Ability to declare categories for events and tabulate average spending and income based on category
 * Consider methods for simple optimization by configuring supported values as within a range and optimize a cost function
 * Handle inflation
