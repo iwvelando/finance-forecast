@@ -158,8 +158,8 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 			currentPayment.Principal = loanPayment - currentPayment.Interest + extraPrincipal
 
 			// Ensure we do not overpay on extra principal
-			if currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal < extraPrincipal &&
-				currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal > 0 {
+			if Round(currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal) < extraPrincipal &&
+				Round(currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal) > 0 {
 				// We could pay off the loan by paying a portion, but not all of, the
 				// extra principal.
 				extraPrincipal = currentPayment.Principal - loan.AmortizationSchedule[previousMonth].RemainingPrincipal
@@ -169,7 +169,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 					zap.String("op", "config.GetAmortizationSchedule"),
 				)
 				currentPayment.Principal = loanPayment - currentPayment.Interest + extraPrincipal
-			} else if currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal > extraPrincipal {
+			} else if Round(currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal) > extraPrincipal {
 				// In this case we should not be paying any extra principal; the
 				// payment is actually liable to be reduced; adjust extraPrincipal to
 				// be the appropriate non-positive value to make this adjustment.
@@ -182,13 +182,21 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 				)
 			}
 
-			if month == loan.Term || loan.AmortizationSchedule[previousMonth].RemainingPrincipal-currentPayment.Principal == 0 {
+			if month == loan.Term || Round(loan.AmortizationSchedule[previousMonth].RemainingPrincipal-currentPayment.Principal) == 0 {
 				// We will get machine error otherwise so just set to 0.
 				currentPayment.RemainingPrincipal = 0.00
-				// Incorporate the expected escrow refund; the RedunableEscrow value
-				// tracks the refundable amount for early payoffs so we need to reduce
-				// further by an escrow payment
-				currentPayment.Payment -= (currentPayment.RefundableEscrow + loan.Escrow)
+				december, err := CheckMonth(currentMonth, "12")
+				if err != nil {
+					return err
+				}
+				if !december {
+					// Incorporate the expected escrow refund; the RedunableEscrow value
+					// tracks the refundable amount for early payoffs so we need to
+					// reduce further by an escrow payment. Note that here we assume that
+					// if a loan matures naturally then escrow will be applied that year
+					// on december; this is not the assumption we use for early payoffs.
+					currentPayment.Payment -= currentPayment.RefundableEscrow + loan.Escrow
+				}
 			} else {
 				currentPayment.RemainingPrincipal = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - currentPayment.Principal
 			}
@@ -200,7 +208,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 			loan.AmortizationSchedule[currentMonth] = currentPayment
 			// Since the loan matured we will extrapolate the escrow to be paid on
 			// Decembers.
-			if month == loan.Term || loan.AmortizationSchedule[previousMonth].RemainingPrincipal-currentPayment.Principal == 0 {
+			if month == loan.Term || Round(loan.AmortizationSchedule[previousMonth].RemainingPrincipal-currentPayment.Principal) == 0 {
 				for {
 					if currentMonth == conf.Common.DeathDate {
 						break
@@ -209,13 +217,14 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 					if err != nil {
 						return err
 					}
-					if december {
+					if december && loan.Escrow > 0 && month != loan.Term {
 						var escrowPayment Payment
 						escrowPayment.Payment = loan.Escrow * 12
 						loan.AmortizationSchedule[currentMonth] = escrowPayment
 					}
 					previousMonth = currentMonth
 					currentMonth, err = OffsetDate(currentMonth, DateTimeLayout, 1)
+					month = 0
 					if err != nil {
 						return err
 					}
@@ -270,7 +279,7 @@ func (loan *Loan) CheckEarlyPayoffThreshold(logger *zap.Logger, currentMonth str
 		if err != nil {
 			return note, err
 		}
-		if balance-loan.AmortizationSchedule[previousMonth].RemainingPrincipal >= loan.EarlyPayoffThreshold {
+		if Round(balance-loan.AmortizationSchedule[previousMonth].RemainingPrincipal) >= loan.EarlyPayoffThreshold {
 			logger.Debug(fmt.Sprintf("%s: based on threshold paying off asset %s for %.2f", currentMonth, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal),
 				zap.String("op", "config.CheckEarlyPayoffThreshold"),
 			)

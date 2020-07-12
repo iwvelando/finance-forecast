@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"github.com/spf13/viper"
+	"math"
 	"time"
 )
 
@@ -153,4 +154,10 @@ func (event *Event) FormDateList(conf Configuration) error {
 	event.DateList = dateList
 
 	return nil
+}
+
+// Round rounds a value to two decimals, i.e. to represent real currency. Used
+// for making logical comparisons.
+func Round(val float64) float64 {
+	return math.Round(val*100) / 100
 }
