@@ -23,7 +23,8 @@ type Loan struct {
 	EarlyPayoffThreshold    float64
 	EarlyPayoffDate         string
 	SellProperty            bool
-	ValueChange             float64
+	SellPrice               float64
+	SellCostsNet            float64
 	ExtraPrincipalPayments  []Event
 	AmortizationSchedule    map[string]Payment
 }
@@ -43,6 +44,9 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 	// First handle the processing for all Loans in Scenarios.
 	for i, scenario := range conf.Scenarios {
 		for j := range scenario.Loans {
+			if conf.Scenarios[i].Loans[j].SellPrice == 0 {
+				conf.Scenarios[i].Loans[j].SellPrice = conf.Scenarios[i].Loans[j].Principal
+			}
 			err := conf.Scenarios[i].Loans[j].GetAmortizationSchedule(logger, *conf)
 			if err != nil {
 				return err
@@ -52,6 +56,9 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 
 	// Next handle the processing for the Common Loans.
 	for i := range conf.Common.Loans {
+		if conf.Common.Loans[i].SellPrice == 0 {
+			conf.Common.Loans[i].SellPrice = conf.Common.Loans[i].Principal
+		}
 		err := conf.Common.Loans[i].GetAmortizationSchedule(logger, *conf)
 		if err != nil {
 			return err
@@ -112,8 +119,8 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 
 		if loan.EarlyPayoffDate == currentMonth {
 			if loan.SellProperty {
-				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.Principal*(1.0+loan.ValueChange/100.0) - currentPayment.RefundableEscrow
-				logger.Debug(fmt.Sprintf("%s: paying off asset %s for %.2f and selling for %.2f", loan.EarlyPayoffDate, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.Principal*(1.0+loan.ValueChange/100.0)),
+				currentPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.SellPrice + loan.SellCostsNet
+				logger.Debug(fmt.Sprintf("%s: paying off asset %s for %.2f and selling for %.2f with %.2f selling costs", loan.EarlyPayoffDate, loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.SellPrice, loan.SellCostsNet),
 					zap.String("op", "config.GetAmortizationSchedule"),
 				)
 				loan.AmortizationSchedule[currentMonth] = currentPayment
@@ -285,10 +292,10 @@ func (loan *Loan) CheckEarlyPayoffThreshold(logger *zap.Logger, currentMonth str
 			)
 			var finalPayment Payment
 			if loan.SellProperty {
-				finalPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.AmortizationSchedule[currentMonth].RefundableEscrow - loan.Principal*(1.0+loan.ValueChange/100.0)
+				finalPayment.Payment = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - loan.SellPrice + loan.SellCostsNet
 				loan.AmortizationSchedule[currentMonth] = finalPayment
-				note = fmt.Sprintf("paying off asset %s for %.2f and selling for %.2f", loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.Principal*(1.0+loan.ValueChange/100.0))
-				logger.Debug(fmt.Sprintf("%s: selling asset %s for %.2f", currentMonth, loan.Name, loan.Principal*(1.0+loan.ValueChange/100.0)),
+				note = fmt.Sprintf("paying off asset %s for %.2f and selling for %.2f with %.2f selling costs", loan.Name, loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.SellPrice, loan.SellCostsNet)
+				logger.Debug(fmt.Sprintf("%s: selling asset %s for %.2f with %.2f selling costs", currentMonth, loan.Name, loan.SellPrice, loan.SellCostsNet),
 					zap.String("op", "config.CheckEarlyPayoffThreshold"),
 				)
 			} else {
