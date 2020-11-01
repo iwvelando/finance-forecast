@@ -169,7 +169,7 @@ scenarios:
           - amount: 100.00
             frequency: 1
           - name: large one-off payment
-            amount: 29000.00
+            amount: 19000.00
             frequency: 1
             startDate: 2023-06
             endDate: 2023-06
