@@ -113,11 +113,13 @@ scenarios:
         # set and happens before the end of the loan or when
         # earlyPayoffThreshold is set and happens before the end of the loan.
         sellProperty: true
-        # valueChange: optionally enter a positive a negative value indicating
-        # the percent change in property value compared to the principal. A
-        # value of 2.00% means the property has increased in value by 2.00% and
-        # a value of -2.00% means the property has decreased in value by 2.00%.
-        valueChange: 2.00
+        # sellPrice: optionally enter a positive value for the sell price. If
+        # omitted it will default to the principal.
+        sellPrice: 153000.00
+        # sellCostsNet: optionally enter a positive or negative value for the
+        # net costs incurred with the sell. This is usually a positive value
+        # which means a payment and entails various closing costs.
+        sellCostsNet: 9500.00
       - name: 5678 Street Address
         principal: 200000.00
         downPayment: 40000.00
@@ -150,7 +152,8 @@ scenarios:
         mortgageInsuranceCutoff: 78.00
         earlyPayoffDate: 2022-06
         sellProperty: true
-        valueChange: 2.00
+        sellPrice: 153000.00
+        sellCostsNet: 9500.00
       - name: 5678 Street Address
         principal: 200000.00
         downPayment: 40000.00
