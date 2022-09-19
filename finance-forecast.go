@@ -51,6 +51,15 @@ func main() {
 		)
 	}
 
+	// Process any stock-related events
+	err = conf.ProcessStockEvents()
+	if err != nil {
+		logger.Fatal("failed to process stock events",
+			zap.String("op", "main"),
+			zap.Error(err),
+		)
+	}
+
 	// Process the amortization schedules for all loans.
 	err = conf.ProcessLoans(logger)
 	if err != nil {

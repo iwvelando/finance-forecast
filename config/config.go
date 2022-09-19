@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/piquette/finance-go/quote"
 	"github.com/spf13/viper"
 	"math"
 	"time"
@@ -37,12 +38,15 @@ type Scenario struct {
 
 // Event indicates a financial event.
 type Event struct {
-	Name      string
-	Amount    float64
-	StartDate string
-	EndDate   string
-	Frequency int // months
-	DateList  []time.Time
+	Name         string
+	Amount       float64
+	StartDate    string
+	EndDate      string
+	Frequency    int // months
+	StockSymbol  string
+	StockUnits   float64
+	StockTaxRate float64
+	DateList     []time.Time
 }
 
 // LoadConfiguration takes a file path as input and loads the YAML-formatted
@@ -105,6 +109,45 @@ func (conf *Configuration) ParseDateLists() error {
 			}
 		}
 	}
+
+	return nil
+}
+
+// ProcessStockEvents determines the amount for any events declaring a stock symbol
+func (conf *Configuration) ProcessStockEvents() error {
+	// First handle the processing for all Events in Scenarios.
+	for i, scenario := range conf.Scenarios {
+		for j := range scenario.Events {
+			err := conf.Scenarios[i].Events[j].ComputeAmount()
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// Next handle the processing for the Common Events.
+	for i := range conf.Common.Events {
+		err := conf.Common.Events[i].ComputeAmount()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ComputeAmount determines Amount of Stock parameters have been set
+func (event *Event) ComputeAmount() error {
+	if event.StockSymbol == "" {
+		return nil
+	}
+
+	price, err := quote.Get(event.StockSymbol)
+	if err != nil {
+		return err
+	}
+
+	event.Amount = event.StockUnits * (1 - event.StockTaxRate) * price.RegularMarketPrice
 
 	return nil
 }
