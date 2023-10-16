@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/iwvelando/finance-forecast/config"
 	"github.com/iwvelando/finance-forecast/forecast"
 	"go.uber.org/zap"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
-	"sort"
-	"strings"
 )
 
 func main() {
@@ -25,6 +26,7 @@ func main() {
 	// Process command line flags.
 	configLocation := flag.String("config", "config.yaml", "path to configuration file")
 	outputFormat := flag.String("output-format", "pretty", "type of output: pretty, csv")
+	getEmergencyFund := flag.Bool("get-emergency-fund", false, "run simulation and output estimate of a 6-month emergency fund")
 	flag.Parse()
 
 	if *outputFormat != "pretty" && *outputFormat != "csv" {
@@ -51,15 +53,6 @@ func main() {
 		)
 	}
 
-	// Process any stock-related events
-	err = conf.ProcessStockEvents()
-	if err != nil {
-		logger.Fatal("failed to process stock events",
-			zap.String("op", "main"),
-			zap.Error(err),
-		)
-	}
-
 	// Process the amortization schedules for all loans.
 	err = conf.ProcessLoans(logger)
 	if err != nil {
@@ -79,10 +72,18 @@ func main() {
 	}
 
 	// Handle output.
-	if *outputFormat == "pretty" {
-		PrettyFormat(results)
-	} else if *outputFormat == "csv" {
-		CsvFormat(results)
+	if *getEmergencyFund {
+		for _, result := range results {
+			emergencyFund := result.GetEmergencyFund()
+			fmt.Printf("6-month Emergency Fund Estimates\n")
+			fmt.Printf("%s: %f\n", result.Name, emergencyFund)
+		}
+	} else {
+		if *outputFormat == "pretty" {
+			PrettyFormat(results)
+		} else if *outputFormat == "csv" {
+			CsvFormat(results)
+		}
 	}
 
 }
@@ -94,15 +95,15 @@ func PrettyFormat(results []forecast.Forecast) {
 		fmt.Printf("--- Results for scenario %s ---\n", result.Name)
 		fmt.Printf("Date    | Amount        | Notes\n")
 		fmt.Printf("____    | _____________ | _____\n")
-		dates := make([]string, len(result.Data))
+		dates := make([]string, len(result.Balance))
 		n := 0
-		for date := range result.Data {
+		for date := range result.Balance {
 			dates[n] = date
 			n++
 		}
 		sort.Strings(dates)
 		for _, date := range dates {
-			p.Printf("%s | $%.2f | %s\n", date, result.Data[date], strings.Join(result.Notes[date], ","))
+			p.Printf("%s | $%.2f | %s\n", date, result.Balance[date], strings.Join(result.Notes[date], ","))
 		}
 		if len(results) > 1 {
 			fmt.Printf("\n")
@@ -113,9 +114,9 @@ func PrettyFormat(results []forecast.Forecast) {
 // CsvFormat outputs in comma-separated value format.
 func CsvFormat(results []forecast.Forecast) {
 	// All results have the same timeline, so grab the dates from the first
-	dates := make([]string, len(results[0].Data))
+	dates := make([]string, len(results[0].Balance))
 	n := 0
-	for date := range results[0].Data {
+	for date := range results[0].Balance {
 		dates[n] = date
 		n++
 	}
@@ -128,7 +129,7 @@ func CsvFormat(results []forecast.Forecast) {
 	for _, date := range dates {
 		fmt.Printf(`"%s"`, date)
 		for _, result := range results {
-			fmt.Printf(`,"%.2f"`, result.Data[date])
+			fmt.Printf(`,"%.2f"`, result.Balance[date])
 			fmt.Printf(`,"%s"`, strings.Join(result.Notes[date], ","))
 		}
 		fmt.Printf("\n")
