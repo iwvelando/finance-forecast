@@ -33,8 +33,9 @@ func (investment *Investment) HandleInvestment(logger *zap.Logger, date string) 
 	}
 
 	if investment.MonthsElapsed%12 == 0 {
-		investment.CurrentValue *= 1.0 + investment.GrowthRatePercent/100.0*(1.0-investment.GrowthTaxRatePercent/100.0)
-		logger.Debug(fmt.Sprintf("%s: investment %s value has grown to %.2f", date, investment.Name, investment.CurrentValue),
+		payment -= investment.CurrentValue*investment.GrowthRatePercent/100.0*investment.GrowthTaxRatePercent/100.0
+		investment.CurrentValue *= 1.0 + investment.GrowthRatePercent/100.0
+		logger.Debug(fmt.Sprintf("%s: investment %s value has grown to %.2f with tax liability of %.2f", date, investment.Name, investment.CurrentValue, investment.CurrentValue*investment.GrowthRatePercent/100.0*investment.GrowthTaxRatePercent/100.0),
 			zap.String("op", "config.HandleInvestment"),
 		)
 	}
