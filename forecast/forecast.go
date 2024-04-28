@@ -4,6 +4,7 @@ package forecast
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"sort"
 	"time"
 
@@ -145,7 +146,24 @@ func HandleLoans(logger *zap.Logger, date string, loans []config.Loan, costs map
 	return amount
 }
 
-func (f *Forecast) GetEmergencyFund() float64 {
+func (f *Forecast) GetEmergencyFundOneMonth() float64 {
+	iterations := 2000
+	costs := make([]float64, iterations)
+	for i := 0; i < iterations; i++ {
+		costs[i] = f.ShuffleEmergencyFund()
+	}
+	sort.Float64s(costs)
+	mid := len(costs) / 2
+	var monthlyCostMedian float64
+	if len(costs)%2 == 0 {
+		monthlyCostMedian = (costs[mid-1] + costs[mid]) / 2
+	} else {
+		monthlyCostMedian = costs[mid]
+	}
+	return monthlyCostMedian
+}
+
+func (f *Forecast) ShuffleEmergencyFund() float64 {
 	dates := make([]string, len(f.Balance))
 	n := 0
 	for date := range f.Balance {
@@ -154,10 +172,9 @@ func (f *Forecast) GetEmergencyFund() float64 {
 	}
 	sort.Strings(dates)
 	sum := 0.0
-	nMonths := 12
-	nMonthsFund := 6
+	nMonths := rand.IntN(len(f.Balance))
 	for i := 0; i < nMonths; i++ {
 		sum += f.Costs[dates[i]]
 	}
-	return sum / float64(nMonths) * float64(nMonthsFund)
+	return sum / float64(nMonths)
 }

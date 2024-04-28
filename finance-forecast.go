@@ -74,9 +74,9 @@ func main() {
 	// Handle output.
 	if *getEmergencyFund {
 		for _, result := range results {
-			emergencyFund := result.GetEmergencyFund()
+			emergencyFundMonthlyCost := result.GetEmergencyFundOneMonth()
 			fmt.Printf("6-month Emergency Fund Estimates\n")
-			fmt.Printf("%s: %f\n", result.Name, emergencyFund)
+			fmt.Printf("%s: %f\n", result.Name, emergencyFundMonthlyCost*6.0)
 		}
 	} else {
 		if *outputFormat == "pretty" {
