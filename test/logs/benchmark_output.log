@@ -1,0 +1,6 @@
+PASS
+ok  	github.com/iwvelando/finance-forecast	0.226s
+PASS
+ok  	github.com/iwvelando/finance-forecast/config	0.195s
+PASS
+ok  	github.com/iwvelando/finance-forecast/forecast	0.182s
