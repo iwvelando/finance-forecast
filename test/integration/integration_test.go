@@ -1,4 +1,4 @@
-package main
+package integration
 
 import (
 	"bufio"
@@ -22,7 +22,7 @@ func TestMainIntegrationBaseline(t *testing.T) {
 	logger := zap.NewNop()
 
 	// Load and process the example configuration exactly as main() does
-	conf, err := config.LoadConfiguration("config.yaml.example")
+	conf, err := config.LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -119,7 +119,7 @@ func TestCSVOutputFormat(t *testing.T) {
 	// Create a no-op logger to avoid debug output during testing
 	logger := zap.NewNop()
 
-	conf, err := config.LoadConfiguration("config.yaml.example")
+	conf, err := config.LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -140,7 +140,7 @@ func TestCSVOutputFormat(t *testing.T) {
 	}
 
 	// Verify we can read our baseline CSV file
-	baselineFile, err := os.Open("test/baseline/baseline_output.csv")
+	baselineFile, err := os.Open("../baseline/baseline_output.csv")
 	if err != nil {
 		t.Fatalf("Could not open baseline CSV file: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestPrettyOutputFormat(t *testing.T) {
 	// Create a no-op logger to avoid debug output during testing
 	logger := zap.NewNop()
 
-	conf, err := config.LoadConfiguration("config.yaml.example")
+	conf, err := config.LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -220,15 +220,31 @@ func TestPrettyOutputFormat(t *testing.T) {
 		t.Fatalf("GetForecast() error = %v", err)
 	}
 
-	// Test that PrettyFormat doesn't crash (we can't easily test output without major refactoring)
+	// Test that PrettyFormat doesn't crash by capturing stdout
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("PrettyFormat() panicked: %v", r)
 		}
 	}()
 
-	// This will print to stdout, but at least verifies it doesn't crash
+	// Capture stdout to avoid verbose test output
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Call PrettyFormat - output will be captured
 	PrettyFormat(results)
+
+	// Restore stdout
+	w.Close()
+	os.Stdout = originalStdout
+
+	// Read captured output to verify it's not empty (but don't print it)
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	if n == 0 {
+		t.Error("PrettyFormat() produced no output")
+	}
 }
 
 // TestCsvFormat tests the CSV format function
@@ -236,7 +252,7 @@ func TestCsvFormat(t *testing.T) {
 	// Create a no-op logger to avoid debug output during testing
 	logger := zap.NewNop()
 
-	conf, err := config.LoadConfiguration("config.yaml.example")
+	conf, err := config.LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -256,15 +272,31 @@ func TestCsvFormat(t *testing.T) {
 		t.Fatalf("GetForecast() error = %v", err)
 	}
 
-	// Test that CsvFormat doesn't crash
+	// Test that CsvFormat doesn't crash by capturing stdout
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("CsvFormat() panicked: %v", r)
 		}
 	}()
 
-	// This will print to stdout, but at least verifies it doesn't crash
+	// Capture stdout to avoid verbose test output
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Call CsvFormat - output will be captured
 	CsvFormat(results)
+
+	// Restore stdout
+	w.Close()
+	os.Stdout = originalStdout
+
+	// Read captured output to verify it's not empty (but don't print it)
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	if n == 0 {
+		t.Error("CsvFormat() produced no output")
+	}
 }
 
 // TestConfigurationValidation tests validation of different configuration scenarios

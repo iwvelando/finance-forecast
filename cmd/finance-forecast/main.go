@@ -43,6 +43,14 @@ func main() {
 		)
 	}
 
+	// Validate configuration and display any warnings
+	warnings := conf.ValidateConfiguration()
+	for _, warning := range warnings {
+		logger.Warn("Configuration warning: "+warning,
+			zap.String("op", "main"),
+		)
+	}
+
 	// Process the Event dates into time.Time.
 	err = conf.ParseDateLists()
 	if err != nil {

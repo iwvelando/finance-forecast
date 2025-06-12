@@ -236,7 +236,8 @@ func mustParseTime(dateStr string) time.Time {
 
 // Test with realistic data similar to the example config
 func TestGetForecastRealistic(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
+	// Use a no-op logger to suppress all debug output during testing
+	logger := zap.NewNop()
 
 	// Load and process the example configuration
 	conf, err := config.LoadConfiguration("../../config.yaml.example")

@@ -4,10 +4,11 @@ package config
 
 import (
 	"fmt"
-	"github.com/piquette/finance-go/quote"
-	"github.com/spf13/viper"
 	"math"
 	"time"
+
+	"github.com/piquette/finance-go/quote"
+	"github.com/spf13/viper"
 )
 
 // DateTimeLayout is the format expected in config files and is also the output
@@ -203,4 +204,66 @@ func (event *Event) FormDateList(conf Configuration) error {
 // for making logical comparisons.
 func Round(val float64) float64 {
 	return math.Round(val*100) / 100
+}
+
+// ValidateConfiguration checks for edge cases and returns warnings
+// This function identifies potential issues without failing the configuration
+func (conf *Configuration) ValidateConfiguration() []string {
+	var warnings []string
+
+	deathDate := conf.Common.DeathDate
+
+	// Check common events for dates at or after death
+	for _, event := range conf.Common.Events {
+		if event.StartDate >= deathDate {
+			warnings = append(warnings, fmt.Sprintf("Common event '%s' starts at or after death date (%s >= %s)",
+				event.Name, event.StartDate, deathDate))
+		}
+		if event.EndDate != "" && event.EndDate > deathDate {
+			warnings = append(warnings, fmt.Sprintf("Common event '%s' ends after death date (%s > %s)",
+				event.Name, event.EndDate, deathDate))
+		}
+	}
+
+	// Check scenario events for dates at or after death
+	for _, scenario := range conf.Scenarios {
+		if !scenario.Active {
+			continue
+		}
+		for _, event := range scenario.Events {
+			if event.StartDate >= deathDate {
+				warnings = append(warnings, fmt.Sprintf("Scenario '%s' event '%s' starts at or after death date (%s >= %s)",
+					scenario.Name, event.Name, event.StartDate, deathDate))
+			}
+			if event.EndDate != "" && event.EndDate > deathDate {
+				warnings = append(warnings, fmt.Sprintf("Scenario '%s' event '%s' ends after death date (%s > %s)",
+					scenario.Name, event.Name, event.EndDate, deathDate))
+			}
+		}
+	}
+
+	// Check common loans for terms extending past death
+	for _, loan := range conf.Common.Loans {
+		maturityDate, err := OffsetDate(loan.StartDate, DateTimeLayout, loan.Term)
+		if err == nil && maturityDate > deathDate {
+			warnings = append(warnings, fmt.Sprintf("Common loan '%s' matures after death date (%s > %s) - loan will have outstanding balance",
+				loan.Name, maturityDate, deathDate))
+		}
+	}
+
+	// Check scenario loans for terms extending past death
+	for _, scenario := range conf.Scenarios {
+		if !scenario.Active {
+			continue
+		}
+		for _, loan := range scenario.Loans {
+			maturityDate, err := OffsetDate(loan.StartDate, DateTimeLayout, loan.Term)
+			if err == nil && maturityDate > deathDate {
+				warnings = append(warnings, fmt.Sprintf("Scenario '%s' loan '%s' matures after death date (%s > %s) - loan will have outstanding balance",
+					scenario.Name, loan.Name, maturityDate, deathDate))
+			}
+		}
+	}
+
+	return warnings
 }

@@ -33,28 +33,29 @@ help:
 	@echo "============================="
 	@echo ""
 	@echo "Available targets:"
-	@echo "  all          - Clean, build, and test (default)"
-	@echo "  build        - Build the application"
-	@echo "  test         - Run all tests"
-	@echo "  test-unit    - Run unit tests only"
-	@echo "  test-integration - Run integration tests only"
-	@echo "  test-performance - Run performance benchmarks"
-	@echo "  test-coverage - Run tests with coverage report"
-	@echo "  test-verbose - Run all tests with verbose output"
-	@echo "  clean        - Clean build artifacts and test logs"
-	@echo "  clean-logs   - Clean test logs only"
-	@echo "  deps         - Download and verify dependencies"
-	@echo "  fmt          - Format Go source code"
-	@echo "  vet          - Run go vet"
-	@echo "  lint         - Run golangci-lint (if available)"
-	@echo "  run          - Build and run with example config"
-	@echo "  run-pretty   - Build and run with pretty output"
-	@echo "  install      - Install the binary to GOPATH/bin"
-	@echo "  dev-setup    - Set up development environment"
-	@echo "  check        - Run all quality checks"
-	@echo "  pre-commit   - Run pre-commit checks"
-	@echo "  status       - Show project status"
-	@echo "  check-organization - Verify project organization"
+	@echo "  all                  - Clean, build, and test (default)"
+	@echo "  build                - Build the application"
+	@echo "  test                 - Run unit and integration tests"
+	@echo "  test-all             - Run all tests including performance"
+	@echo "  test-unit            - Run unit tests only"
+	@echo "  test-integration     - Run integration tests only"
+	@echo "  test-performance     - Run performance tests only"
+	@echo "  test-coverage        - Run tests with coverage report"
+	@echo "  test-verbose         - Run all tests with verbose output"
+	@echo "  clean                - Clean build artifacts and test logs"
+	@echo "  clean-logs           - Clean test logs only"
+	@echo "  deps                 - Download and verify dependencies"
+	@echo "  fmt                  - Format Go source code"
+	@echo "  vet                  - Run go vet"
+	@echo "  lint                 - Run golangci-lint (if available)"
+	@echo "  run                  - Build and run with example config"
+	@echo "  run-pretty           - Build and run with pretty output"
+	@echo "  install              - Install the binary to GOPATH/bin"
+	@echo "  dev-setup            - Set up development environment"
+	@echo "  check                - Run all quality checks"
+	@echo "  pre-commit           - Run pre-commit checks"
+	@echo "  status               - Show project status"
+	@echo "  check-organization   - Verify project organization"
 
 # Build targets
 .PHONY: build
@@ -74,6 +75,10 @@ build-all: build
 .PHONY: test
 test: test-unit test-integration
 
+.PHONY: test-all
+test-all: test-unit test-integration test-performance
+	@echo "All tests completed!"
+
 .PHONY: test-unit
 test-unit:
 	@echo "Running unit tests..."
@@ -82,13 +87,13 @@ test-unit:
 .PHONY: test-integration
 test-integration:
 	@echo "Running integration tests..."
-	$(GOTEST) $(TEST_FLAGS) -run "^TestMain|^TestCSV|^TestConfiguration|^TestEndToEnd" .
+	$(GOTEST) $(TEST_FLAGS) ./test/integration
 
 .PHONY: test-performance
 test-performance:
 	@echo "Running performance benchmarks..."
 	@mkdir -p $(TEST_DIR)/logs
-	$(GOTEST) -bench=. -run=^$$ ./... 2>&1 | tee $(TEST_DIR)/logs/benchmark_output.log
+	$(GOTEST) -v -run "^TestBasic|^TestPerformance|^TestMemory|^TestData" ./test/integration 2>&1 | tee $(TEST_DIR)/logs/benchmark_output.log
 
 .PHONY: test-coverage
 test-coverage:
@@ -103,13 +108,11 @@ test-verbose:
 	@echo "Running all tests with verbose output..."
 	@mkdir -p $(TEST_DIR)/logs
 	@echo "Testing config package..."
-	$(GOTEST) -v ./config 2>&1 | tee $(TEST_DIR)/logs/config_test_output.log
+	$(GOTEST) -v ./internal/config 2>&1 | tee $(TEST_DIR)/logs/config_test_output.log
 	@echo "Testing forecast package..."
-	$(GOTEST) -v ./forecast 2>&1 | tee $(TEST_DIR)/logs/forecast_test_output.log
+	$(GOTEST) -v ./internal/forecast 2>&1 | tee $(TEST_DIR)/logs/forecast_test_output.log
 	@echo "Running integration tests..."
-	$(GOTEST) -v -run "^TestMain|^TestCSV|^TestConfiguration|^TestEndToEnd" . 2>&1 | tee $(TEST_DIR)/logs/integration_test_output.log
-	@echo "Running performance tests..."
-	$(GOTEST) -v -run "^TestBasic|^TestPerformance|^TestMemory|^TestData" . 2>&1 | tee $(TEST_DIR)/logs/performance_test_output.log
+	$(GOTEST) -v ./test/integration 2>&1 | tee $(TEST_DIR)/logs/integration_test_output.log
 
 .PHONY: test-scripts
 test-scripts:

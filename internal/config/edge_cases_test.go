@@ -377,3 +377,530 @@ func abs(x float64) float64 {
 	}
 	return x
 }
+
+// TestEventsAfterDeathDate tests that events starting at or after death date are handled gracefully
+func TestEventsAfterDeathDate(t *testing.T) {
+	logger := zap.NewNop()
+
+	tests := []struct {
+		name        string
+		config      Configuration
+		expectError bool
+		description string
+	}{
+		{
+			name: "Event starting exactly at death date",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 10000,
+					Events: []Event{
+						{
+							Name:      "Event at Death",
+							Amount:    1000,
+							StartDate: "2030-01",
+							Frequency: 1,
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectError: false,
+			description: "Should handle event starting at death date gracefully",
+		},
+		{
+			name: "Event starting after death date",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 10000,
+					Events: []Event{
+						{
+							Name:      "Event After Death",
+							Amount:    1000,
+							StartDate: "2030-06",
+							Frequency: 1,
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectError: false,
+			description: "Should handle event starting after death date gracefully",
+		},
+		{
+			name: "Event ending after death date",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 10000,
+					Events: []Event{
+						{
+							Name:      "Event Ending After Death",
+							Amount:    1000,
+							StartDate: "2025-01",
+							EndDate:   "2035-01",
+							Frequency: 12,
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectError: false,
+			description: "Should handle event ending after death date gracefully",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse date lists
+			err := tt.config.ParseDateLists()
+			if tt.expectError && err == nil {
+				t.Errorf("Expected error in ParseDateLists but got none")
+				return
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("Unexpected error in ParseDateLists: %v", err)
+				return
+			}
+
+			if tt.expectError {
+				return
+			}
+
+			// Process loans (if any)
+			err = tt.config.ProcessLoans(logger)
+			if err != nil {
+				t.Errorf("ProcessLoans failed: %v", err)
+				return
+			}
+
+			// Verify that the configuration can be processed without errors
+			// The events after death date should simply be ignored during forecast generation
+			t.Logf("Successfully processed configuration with %s", tt.description)
+		})
+	}
+}
+
+// TestLoansWithOutstandingBalancesAtDeath tests that loans with balances at death are handled
+func TestLoansWithOutstandingBalancesAtDeath(t *testing.T) {
+	logger := zap.NewNop()
+
+	tests := []struct {
+		name        string
+		config      Configuration
+		expectError bool
+		description string
+	}{
+		{
+			name: "Loan maturing after death date",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 100000,
+					Loans: []Loan{
+						{
+							Name:         "Long Term Loan",
+							StartDate:    "2025-01",
+							Principal:    100000,
+							InterestRate: 5.0,
+							Term:         120, // 10 years, extends past death
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectError: false,
+			description: "Should handle loan extending past death date",
+		},
+		{
+			name: "Multiple loans with different maturity dates",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 100000,
+					Loans: []Loan{
+						{
+							Name:         "Short Loan",
+							StartDate:    "2025-01",
+							Principal:    50000,
+							InterestRate: 5.0,
+							Term:         24, // 2 years, matures before death
+						},
+						{
+							Name:         "Long Loan",
+							StartDate:    "2025-01",
+							Principal:    100000,
+							InterestRate: 4.0,
+							Term:         120, // 10 years, extends past death
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectError: false,
+			description: "Should handle mix of loans maturing before and after death",
+		},
+		{
+			name: "Loan starting near death date",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 100000,
+					Loans: []Loan{
+						{
+							Name:         "Late Start Loan",
+							StartDate:    "2029-01",
+							Principal:    50000,
+							InterestRate: 6.0,
+							Term:         60, // 5 years, only 1 year before death
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectError: false,
+			description: "Should handle loan starting close to death date",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Process loans
+			err := tt.config.ProcessLoans(logger)
+			if tt.expectError && err == nil {
+				t.Errorf("Expected error in ProcessLoans but got none")
+				return
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("Unexpected error in ProcessLoans: %v", err)
+				return
+			}
+
+			if tt.expectError {
+				return
+			}
+
+			// Verify that loans were processed and have amortization schedules
+			for i, loan := range tt.config.Common.Loans {
+				if len(loan.AmortizationSchedule) == 0 {
+					t.Errorf("Loan %d (%s) has no amortization schedule", i, loan.Name)
+					continue
+				}
+
+				// Check that loan payments exist up to (but not beyond) death date
+				hasPaymentAtOrBeforeDeath := false
+				hasPaymentAfterDeath := false
+
+				for date := range loan.AmortizationSchedule {
+					if date <= tt.config.Common.DeathDate {
+						hasPaymentAtOrBeforeDeath = true
+					} else {
+						hasPaymentAfterDeath = true
+					}
+				}
+
+				if !hasPaymentAtOrBeforeDeath {
+					t.Errorf("Loan %s has no payments at or before death date", loan.Name)
+				}
+
+				// It's OK for loans to have payments after death - they just won't be processed
+				// during forecast generation
+				t.Logf("Loan %s: payments before death=%v, payments after death=%v",
+					loan.Name, hasPaymentAtOrBeforeDeath, hasPaymentAfterDeath)
+			}
+
+			t.Logf("Successfully processed %s", tt.description)
+		})
+	}
+}
+
+// TestConfigurationValidationWarnings tests that appropriate warnings are generated
+// for edge cases without failing the configuration
+func TestConfigurationValidationWarnings(t *testing.T) {
+	// Note: This test validates that configurations with edge cases don't fail
+	// In a future implementation, we might add a validation function that returns warnings
+	logger := zap.NewNop()
+
+	config := Configuration{
+		Common: Common{
+			DeathDate:     "2030-01",
+			StartingValue: 100000,
+			Events: []Event{
+				{
+					Name:      "Income Before Death",
+					Amount:    1000,
+					StartDate: "2025-01",
+					EndDate:   "2029-12",
+					Frequency: 1,
+				},
+				{
+					Name:      "Income After Death",
+					Amount:    1000,
+					StartDate: "2031-01",
+					EndDate:   "2035-01",
+					Frequency: 1,
+				},
+			},
+			Loans: []Loan{
+				{
+					Name:         "Normal Loan",
+					StartDate:    "2025-01",
+					Principal:    50000,
+					InterestRate: 5.0,
+					Term:         36, // 3 years, matures before death
+				},
+				{
+					Name:         "Outstanding Loan",
+					StartDate:    "2025-01",
+					Principal:    100000,
+					InterestRate: 4.0,
+					Term:         120, // 10 years, outstanding at death
+				},
+			},
+		},
+		Scenarios: []Scenario{
+			{
+				Name:   "Mixed Scenario",
+				Active: true,
+				Events: []Event{
+					{
+						Name:      "Scenario Event After Death",
+						Amount:    500,
+						StartDate: "2032-01",
+						Frequency: 1,
+					},
+				},
+			},
+		},
+	}
+
+	// Parse date lists
+	err := config.ParseDateLists()
+	if err != nil {
+		t.Errorf("ParseDateLists failed: %v", err)
+		return
+	}
+
+	// Process loans
+	err = config.ProcessLoans(logger)
+	if err != nil {
+		t.Errorf("ProcessLoans failed: %v", err)
+		return
+	}
+
+	// Verify configuration is valid despite edge cases
+	t.Log("Configuration with edge cases processed successfully")
+	t.Log("- Events after death date: handled gracefully")
+	t.Log("- Loans outstanding at death: handled gracefully")
+}
+
+// TestValidateConfiguration tests the validation function for edge cases
+func TestValidateConfiguration(t *testing.T) {
+	tests := []struct {
+		name             string
+		config           Configuration
+		expectedWarnings int
+		description      string
+	}{
+		{
+			name: "No warnings - valid configuration",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 10000,
+					Events: []Event{
+						{
+							Name:      "Valid Event",
+							Amount:    1000,
+							StartDate: "2025-01",
+							EndDate:   "2029-12",
+							Frequency: 1,
+						},
+					},
+					Loans: []Loan{
+						{
+							Name:         "Valid Loan",
+							StartDate:    "2025-01",
+							Principal:    50000,
+							InterestRate: 5.0,
+							Term:         36, // 3 years, matures 2028-01
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{
+						Name:   "Valid Scenario",
+						Active: true,
+						Events: []Event{
+							{
+								Name:      "Valid Scenario Event",
+								Amount:    500,
+								StartDate: "2025-01",
+								EndDate:   "2029-01",
+								Frequency: 1,
+							},
+						},
+					},
+				},
+			},
+			expectedWarnings: 0,
+			description:      "Configuration with no edge cases",
+		},
+		{
+			name: "Event starting at death date",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 10000,
+					Events: []Event{
+						{
+							Name:      "Event at Death",
+							Amount:    1000,
+							StartDate: "2030-01",
+							Frequency: 1,
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectedWarnings: 1,
+			description:      "Event starting exactly at death date",
+		},
+		{
+			name: "Event starting after death date",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 10000,
+					Events: []Event{
+						{
+							Name:      "Event After Death",
+							Amount:    1000,
+							StartDate: "2030-06",
+							Frequency: 1,
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectedWarnings: 1,
+			description:      "Event starting after death date",
+		},
+		{
+			name: "Loan maturing after death date",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 10000,
+					Loans: []Loan{
+						{
+							Name:         "Long Loan",
+							StartDate:    "2025-01",
+							Principal:    100000,
+							InterestRate: 5.0,
+							Term:         120, // 10 years, matures 2035-01
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{Name: "Test", Active: true},
+				},
+			},
+			expectedWarnings: 1,
+			description:      "Loan maturing after death date",
+		},
+		{
+			name: "Multiple edge cases",
+			config: Configuration{
+				Common: Common{
+					DeathDate:     "2030-01",
+					StartingValue: 10000,
+					Events: []Event{
+						{
+							Name:      "Event After Death",
+							Amount:    1000,
+							StartDate: "2031-01",
+							Frequency: 1,
+						},
+						{
+							Name:      "Event Ending After Death",
+							Amount:    500,
+							StartDate: "2025-01",
+							EndDate:   "2035-01",
+							Frequency: 1,
+						},
+					},
+					Loans: []Loan{
+						{
+							Name:         "Outstanding Loan",
+							StartDate:    "2025-01",
+							Principal:    100000,
+							InterestRate: 5.0,
+							Term:         120, // 10 years
+						},
+					},
+				},
+				Scenarios: []Scenario{
+					{
+						Name:   "Test Scenario",
+						Active: true,
+						Events: []Event{
+							{
+								Name:      "Scenario Event After Death",
+								Amount:    200,
+								StartDate: "2032-01",
+								Frequency: 1,
+							},
+						},
+						Loans: []Loan{
+							{
+								Name:         "Scenario Long Loan",
+								StartDate:    "2025-01",
+								Principal:    50000,
+								InterestRate: 4.0,
+								Term:         84, // 7 years, matures 2032-01
+							},
+						},
+					},
+				},
+			},
+			expectedWarnings: 5, // 2 common events + 1 common loan + 1 scenario event + 1 scenario loan
+			description:      "Multiple edge cases across common and scenario",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			warnings := tt.config.ValidateConfiguration()
+
+			if len(warnings) != tt.expectedWarnings {
+				t.Errorf("Expected %d warnings, got %d", tt.expectedWarnings, len(warnings))
+				for i, warning := range warnings {
+					t.Logf("Warning %d: %s", i+1, warning)
+				}
+			} else {
+				t.Logf("Correctly identified %d warnings for %s", len(warnings), tt.description)
+				for i, warning := range warnings {
+					t.Logf("Warning %d: %s", i+1, warning)
+				}
+			}
+		})
+	}
+}

@@ -1,4 +1,4 @@
-package main
+package integration
 
 import (
 	"os"
@@ -23,7 +23,7 @@ func TestBasicFunctionality(t *testing.T) {
 	logger := zap.NewNop()
 
 	// Test basic config loading
-	conf, err := config.LoadConfiguration("config.yaml.example")
+	conf, err := config.LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration failed: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestPerformance(t *testing.T) {
 
 	start := time.Now()
 
-	conf, err := config.LoadConfiguration("config.yaml.example")
+	conf, err := config.LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestMemoryUsage(t *testing.T) {
 
 	// Run multiple iterations to check for memory leaks
 	for i := 0; i < 10; i++ {
-		conf, err := config.LoadConfiguration("config.yaml.example")
+		conf, err := config.LoadConfiguration("../../config.yaml.example")
 		if err != nil {
 			t.Fatalf("LoadConfiguration failed on iteration %d: %v", i, err)
 		}
@@ -154,7 +154,7 @@ func TestDataConsistency(t *testing.T) {
 	var firstResults []forecast.Forecast
 
 	for run := 0; run < 3; run++ {
-		conf, err := config.LoadConfiguration("config.yaml.example")
+		conf, err := config.LoadConfiguration("../../config.yaml.example")
 		if err != nil {
 			t.Fatalf("LoadConfiguration failed on run %d: %v", run, err)
 		}
@@ -270,7 +270,7 @@ func TestConfigurationVariations(t *testing.T) {
 
 	for _, variation := range variations {
 		t.Run(variation.name, func(t *testing.T) {
-			conf, err := config.LoadConfiguration("config.yaml.example")
+			conf, err := config.LoadConfiguration("../../config.yaml.example")
 			if err != nil {
 				t.Fatalf("LoadConfiguration failed: %v", err)
 			}

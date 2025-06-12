@@ -4,9 +4,10 @@ package config
 
 import (
 	"fmt"
-	"go.uber.org/zap"
 	"math"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Loan indicates a loan and its parameters.
@@ -104,6 +105,26 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 	}
 
 	for month := 2; month <= loan.Term; month++ {
+		// Check if we've reached or passed the death date
+		if currentMonth == conf.Common.DeathDate {
+			logger.Debug(fmt.Sprintf("Loan %s reached death date %s, stopping payment generation", loan.Name, conf.Common.DeathDate),
+				zap.String("op", "config.GetAmortizationSchedule"),
+			)
+			break
+		}
+
+		// Check if we've passed the death date
+		pastDeath, err := DateBeforeDate(conf.Common.DeathDate, currentMonth)
+		if err != nil {
+			return err
+		}
+		if pastDeath {
+			logger.Debug(fmt.Sprintf("Loan %s passed death date %s at %s, stopping payment generation", loan.Name, conf.Common.DeathDate, currentMonth),
+				zap.String("op", "config.GetAmortizationSchedule"),
+			)
+			break
+		}
+
 		var currentPayment Payment
 
 		// Calculate refundable escrow
