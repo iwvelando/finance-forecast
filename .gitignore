@@ -16,6 +16,7 @@
 
 # Test logs
 *.log
+/test/logs/
 
 /config.yaml
 /finance-forecast
