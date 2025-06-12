@@ -7,6 +7,7 @@ This directory contains all test-related artifacts for the finance-forecast proj
 ```
 test/
 ├── README.md              # This file
+├── test_config.yaml       # Dedicated test configuration (DO NOT modify)
 ├── baseline/              # Test baseline and reference files
 │   └── baseline_output.csv
 ├── docs/                  # Test documentation and reports
@@ -85,6 +86,19 @@ When running `make test-coverage`, coverage reports are generated:
 
 The `baseline/` directory contains reference files for comparison testing:
 - `baseline_output.csv` - Known good output for integration tests
+
+## Test Configuration
+
+### `test_config.yaml`
+This is the dedicated configuration file used by all automated tests. It contains the same structure as `config.yaml.example` but is optimized for testing with predictable values. 
+
+**Important**: Do not modify this file unless you understand the impact on test baseline values and are prepared to update all affected test expectations.
+
+### Configuration File Usage
+- **Tests**: Use `test/test_config.yaml`
+- **Documentation/Examples**: Use `config.yaml.example`
+- **Manual Testing**: Use `config.yaml.example` or create your own
+- **Application Runtime**: User provides their own config file
 
 ## Test Organization Benefits
 

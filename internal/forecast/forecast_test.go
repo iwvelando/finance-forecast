@@ -239,8 +239,8 @@ func TestGetForecastRealistic(t *testing.T) {
 	// Use a no-op logger to suppress all debug output during testing
 	logger := zap.NewNop()
 
-	// Load and process the example configuration
-	conf, err := config.LoadConfiguration("../../config.yaml.example")
+	// Load and process the test configuration
+	conf, err := config.LoadConfiguration("../../test/test_config.yaml")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}

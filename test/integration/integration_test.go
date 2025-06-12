@@ -22,7 +22,7 @@ func TestMainIntegrationBaseline(t *testing.T) {
 	logger := zap.NewNop()
 
 	// Load and process the example configuration exactly as main() does
-	conf, err := config.LoadConfiguration("../../config.yaml.example")
+	conf, err := config.LoadConfiguration("../test_config.yaml")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -119,7 +119,7 @@ func TestCSVOutputFormat(t *testing.T) {
 	// Create a no-op logger to avoid debug output during testing
 	logger := zap.NewNop()
 
-	conf, err := config.LoadConfiguration("../../config.yaml.example")
+	conf, err := config.LoadConfiguration("../test_config.yaml")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -200,7 +200,7 @@ func TestPrettyOutputFormat(t *testing.T) {
 	// Create a no-op logger to avoid debug output during testing
 	logger := zap.NewNop()
 
-	conf, err := config.LoadConfiguration("../../config.yaml.example")
+	conf, err := config.LoadConfiguration("../test_config.yaml")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -252,7 +252,7 @@ func TestCsvFormat(t *testing.T) {
 	// Create a no-op logger to avoid debug output during testing
 	logger := zap.NewNop()
 
-	conf, err := config.LoadConfiguration("../../config.yaml.example")
+	conf, err := config.LoadConfiguration("../test_config.yaml")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}

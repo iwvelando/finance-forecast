@@ -44,7 +44,7 @@ func TestLoadConfigurationExample(t *testing.T) {
 	// Set up a no-op logger to prevent debug output during testing
 	logger := zap.NewNop()
 
-	config, err := LoadConfiguration("../../config.yaml.example")
+	config, err := LoadConfiguration("../../test/test_config.yaml")
 	if err != nil {
 		t.Errorf("LoadConfiguration() error = %v", err)
 		return
@@ -60,7 +60,7 @@ func TestLoadConfigurationExample(t *testing.T) {
 }
 
 func TestLoadConfigurationStructure(t *testing.T) {
-	config, err := LoadConfiguration("../../config.yaml.example")
+	config, err := LoadConfiguration("../../test/test_config.yaml")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -107,7 +107,7 @@ func TestLoadConfigurationStructure(t *testing.T) {
 }
 
 func TestParseDateLists(t *testing.T) {
-	config, err := LoadConfiguration("../../config.yaml.example")
+	config, err := LoadConfiguration("../../test/test_config.yaml")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -505,7 +505,7 @@ func TestProcessLoans(t *testing.T) {
 func TestExampleConfigurationProcessing(t *testing.T) {
 	logger := zap.NewNop()
 
-	config, err := LoadConfiguration("../../config.yaml.example")
+	config, err := LoadConfiguration("../../test/test_config.yaml")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
