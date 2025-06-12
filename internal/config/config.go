@@ -59,7 +59,7 @@ func LoadConfiguration(configPath string) (*Configuration, error) {
 	viper.SetConfigType("yml")
 
 	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("Error reading config file, %s", err)
+		return nil, fmt.Errorf("error reading config file, %s", err)
 	}
 
 	var configuration Configuration
