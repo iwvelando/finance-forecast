@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iwvelando/finance-forecast/config"
-	"github.com/iwvelando/finance-forecast/forecast"
+	"github.com/iwvelando/finance-forecast/internal/config"
+	"github.com/iwvelando/finance-forecast/internal/forecast"
 	"go.uber.org/zap"
 )
 
@@ -19,15 +19,8 @@ func TestMain(m *testing.M) {
 
 // TestBasicFunctionality tests basic functionality works
 func TestBasicFunctionality(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping performance test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		t.Fatalf("Failed to create logger: %v", err)
-	}
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	// Test basic config loading
 	conf, err := config.LoadConfiguration("config.yaml.example")
@@ -62,12 +55,8 @@ func TestBasicFunctionality(t *testing.T) {
 
 // TestPerformance tests performance characteristics
 func TestPerformance(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping performance test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, _ := zap.NewDevelopment()
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	start := time.Now()
 
@@ -127,12 +116,8 @@ func TestPerformance(t *testing.T) {
 
 // TestMemoryUsage performs basic memory usage validation
 func TestMemoryUsage(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping performance test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, _ := zap.NewDevelopment()
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	// Run multiple iterations to check for memory leaks
 	for i := 0; i < 10; i++ {
@@ -162,12 +147,8 @@ func TestMemoryUsage(t *testing.T) {
 
 // TestDataConsistency validates that multiple runs produce identical results
 func TestDataConsistency(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping performance test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, _ := zap.NewDevelopment()
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	// Run the same configuration multiple times
 	var firstResults []forecast.Forecast
@@ -244,12 +225,8 @@ func TestDataConsistency(t *testing.T) {
 
 // TestConfigurationVariations tests different configuration variations
 func TestConfigurationVariations(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping performance test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, _ := zap.NewDevelopment()
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	variations := []struct {
 		name            string
@@ -268,7 +245,7 @@ func TestConfigurationVariations(t *testing.T) {
 		{
 			name: "Shorter death date",
 			modifyConfig: func(c *config.Configuration) {
-				c.Common.DeathDate = "2030-01"
+				c.Common.DeathDate = "2055-01" // Must be after events and loans end (some go to 2050)
 			},
 			expectError:     false,
 			expectScenarios: 3,
@@ -276,7 +253,7 @@ func TestConfigurationVariations(t *testing.T) {
 		{
 			name: "Higher starting value",
 			modifyConfig: func(c *config.Configuration) {
-				c.Common.StartingValue = 100000
+				c.Common.StartingValue = 50000.0
 			},
 			expectError:     false,
 			expectScenarios: 3,

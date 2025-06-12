@@ -41,15 +41,10 @@ func TestLoadConfiguration(t *testing.T) {
 }
 
 func TestLoadConfigurationExample(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping example config test to avoid debug output. Run with -v to enable.")
-	}
-
-	// Set up a no-op logger to prevent debug output
+	// Set up a no-op logger to prevent debug output during testing
 	logger := zap.NewNop()
 
-	config, err := LoadConfiguration("../config.yaml.example")
+	config, err := LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Errorf("LoadConfiguration() error = %v", err)
 		return
@@ -65,12 +60,7 @@ func TestLoadConfigurationExample(t *testing.T) {
 }
 
 func TestLoadConfigurationStructure(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping example config test to avoid debug output. Run with -v to enable.")
-	}
-
-	config, err := LoadConfiguration("../config.yaml.example")
+	config, err := LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -117,12 +107,7 @@ func TestLoadConfigurationStructure(t *testing.T) {
 }
 
 func TestParseDateLists(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping example config test to avoid debug output. Run with -v to enable.")
-	}
-
-	config, err := LoadConfiguration("../config.yaml.example")
+	config, err := LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
@@ -518,14 +503,9 @@ func TestProcessLoans(t *testing.T) {
 
 // Test the example configuration processing end-to-end
 func TestExampleConfigurationProcessing(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output
-	if !testing.Verbose() {
-		t.Skip("Skipping example config test to avoid debug output. Run with -v to enable.")
-	}
-
 	logger := zap.NewNop()
 
-	config, err := LoadConfiguration("../config.yaml.example")
+	config, err := LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}

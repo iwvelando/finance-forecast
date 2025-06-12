@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/iwvelando/finance-forecast/config"
-	"github.com/iwvelando/finance-forecast/forecast"
+	"sort"
+	"strings"
+
+	"github.com/iwvelando/finance-forecast/internal/config"
+	"github.com/iwvelando/finance-forecast/internal/forecast"
 	"go.uber.org/zap"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
-	"sort"
-	"strings"
 )
 
 func main() {

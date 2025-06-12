@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iwvelando/finance-forecast/config"
+	"github.com/iwvelando/finance-forecast/internal/config"
 	"go.uber.org/zap"
 )
 
@@ -239,7 +239,7 @@ func TestGetForecastRealistic(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 
 	// Load and process the example configuration
-	conf, err := config.LoadConfiguration("../config.yaml.example")
+	conf, err := config.LoadConfiguration("../../config.yaml.example")
 	if err != nil {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}

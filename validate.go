@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/iwvelando/finance-forecast/config"
-	"github.com/iwvelando/finance-forecast/forecast"
+	"github.com/iwvelando/finance-forecast/internal/config"
+	"github.com/iwvelando/finance-forecast/internal/forecast"
 	"go.uber.org/zap"
 )
 

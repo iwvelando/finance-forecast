@@ -2,24 +2,24 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
-	"github.com/iwvelando/finance-forecast/config"
-	"github.com/iwvelando/finance-forecast/forecast"
+	"github.com/iwvelando/finance-forecast/internal/config"
+	"github.com/iwvelando/finance-forecast/internal/forecast"
 	"go.uber.org/zap"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 // TestMainIntegrationBaseline tests that the application produces the same results
 // as our baseline captured from the current working version
 func TestMainIntegrationBaseline(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping integration test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, _ := zap.NewDevelopment()
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	// Load and process the example configuration exactly as main() does
 	conf, err := config.LoadConfiguration("config.yaml.example")
@@ -116,12 +116,8 @@ func validateBaselineValues(t *testing.T, results []forecast.Forecast) {
 
 // TestCSVOutputFormat tests that CSV output matches our baseline format
 func TestCSVOutputFormat(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping integration test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, _ := zap.NewDevelopment()
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	conf, err := config.LoadConfiguration("config.yaml.example")
 	if err != nil {
@@ -144,7 +140,7 @@ func TestCSVOutputFormat(t *testing.T) {
 	}
 
 	// Verify we can read our baseline CSV file
-	baselineFile, err := os.Open("baseline_output.csv")
+	baselineFile, err := os.Open("test/baseline/baseline_output.csv")
 	if err != nil {
 		t.Fatalf("Could not open baseline CSV file: %v", err)
 	}
@@ -201,12 +197,8 @@ func TestCSVOutputFormat(t *testing.T) {
 
 // TestPrettyOutputFormat tests the pretty print output
 func TestPrettyOutputFormat(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping integration test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, _ := zap.NewDevelopment()
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	conf, err := config.LoadConfiguration("config.yaml.example")
 	if err != nil {
@@ -241,12 +233,8 @@ func TestPrettyOutputFormat(t *testing.T) {
 
 // TestCsvFormat tests the CSV format function
 func TestCsvFormat(t *testing.T) {
-	// Skip this test unless running in verbose mode to avoid debug output from example config
-	if !testing.Verbose() {
-		t.Skip("Skipping integration test to avoid debug output. Run with -v to enable.")
-	}
-
-	logger, _ := zap.NewDevelopment()
+	// Create a no-op logger to avoid debug output during testing
+	logger := zap.NewNop()
 
 	conf, err := config.LoadConfiguration("config.yaml.example")
 	if err != nil {
@@ -476,4 +464,52 @@ func findScenario(results []forecast.Forecast, name string) *forecast.Forecast {
 		}
 	}
 	return nil
+}
+
+// PrettyFormat outputs a human-readable rather than machine-readable table.
+func PrettyFormat(results []forecast.Forecast) {
+	p := message.NewPrinter(language.English)
+	for _, result := range results {
+		fmt.Printf("--- Results for scenario %s ---\n", result.Name)
+		fmt.Printf("Date    | Amount        | Notes\n")
+		fmt.Printf("____    | _____________ | _____\n")
+		dates := make([]string, len(result.Data))
+		n := 0
+		for date := range result.Data {
+			dates[n] = date
+			n++
+		}
+		sort.Strings(dates)
+		for _, date := range dates {
+			p.Printf("%s | $%.2f | %s\n", date, result.Data[date], strings.Join(result.Notes[date], ","))
+		}
+		if len(results) > 1 {
+			fmt.Printf("\n")
+		}
+	}
+}
+
+// CsvFormat outputs in comma-separated value format.
+func CsvFormat(results []forecast.Forecast) {
+	// All results have the same timeline, so grab the dates from the first
+	dates := make([]string, len(results[0].Data))
+	n := 0
+	for date := range results[0].Data {
+		dates[n] = date
+		n++
+	}
+	sort.Strings(dates)
+	fmt.Printf(`"date"`)
+	for _, result := range results {
+		fmt.Printf(`,"amount (%s)","notes (%s)"`, result.Name, result.Name)
+	}
+	fmt.Printf("\n")
+	for _, date := range dates {
+		fmt.Printf(`"%s"`, date)
+		for _, result := range results {
+			fmt.Printf(`,"%.2f"`, result.Data[date])
+			fmt.Printf(`,"%s"`, strings.Join(result.Notes[date], ","))
+		}
+		fmt.Printf("\n")
+	}
 }

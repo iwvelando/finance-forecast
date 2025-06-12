@@ -4,9 +4,10 @@ package forecast
 
 import (
 	"fmt"
-	"github.com/iwvelando/finance-forecast/config"
-	"go.uber.org/zap"
 	"time"
+
+	"github.com/iwvelando/finance-forecast/internal/config"
+	"go.uber.org/zap"
 )
 
 // Forecast holds all information related to a specific forecast.
