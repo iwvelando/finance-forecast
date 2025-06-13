@@ -68,7 +68,6 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 }
 
 // GetAmortizationSchedule computes the amortization schedule for a given Loan.
-// This delegates to pkg/loans.AmortizationScheduleGenerator for the core calculation logic.
 func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration) error {
 	// Convert config.Loan to loans.LoanConfig
 	loanConfig := &loans.LoanConfig{
@@ -127,7 +126,6 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 }
 
 // ExtraPrincipal returns an extra principal payment, if present, or 0
-// This delegates to the loans package implementation
 func (loan *Loan) ExtraPrincipal(logger *zap.Logger, date string) (float64, error) {
 	var loanEvents []loans.Event
 	for _, event := range loan.ExtraPrincipalPayments {

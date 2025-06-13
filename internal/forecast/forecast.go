@@ -112,7 +112,3 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 
 	return results, nil
 }
-
-// Note: HandleEvents and HandleLoans functions have been removed in favor of
-// using the finance.ForecastEngine directly for better code organization
-// and leveraging existing pkg utilities

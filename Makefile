@@ -35,28 +35,22 @@ help:
 	@echo "Available targets:"
 	@echo "  all                  - Clean, build, and test (default)"
 	@echo "  build                - Build the application"
+	@echo "  build-all            - Build for multiple platforms"
 	@echo "  test                 - Run unit and integration tests"
 	@echo "  test-all             - Run all tests including performance"
 	@echo "  test-unit            - Run unit tests only"
 	@echo "  test-integration     - Run integration tests only"
 	@echo "  test-performance     - Run performance tests only"
-	@echo "  test-coverage        - Run tests with coverage report"
 	@echo "  test-verbose         - Run all tests with verbose output"
 	@echo "  clean                - Clean build artifacts and test logs"
-	@echo "  clean-logs           - Clean test logs only"
 	@echo "  deps                 - Download and verify dependencies"
 	@echo "  fmt                  - Format Go source code"
 	@echo "  vet                  - Run go vet"
 	@echo "  lint                 - Run golangci-lint (if available)"
-	@echo "  run                  - Build and run with example config"
-	@echo "  run-pretty           - Build and run with pretty output"
 	@echo "  install              - Install the binary to GOPATH/bin"
 	@echo "  dev-setup            - Set up development environment"
 	@echo "  check                - Run all quality checks"
-	@echo "  pre-commit           - Run pre-commit checks"
-	@echo "  status               - Show project status"
-	@echo "  check-organization   - Verify project organization"
-	@echo "  validate              - Validate the application with example config"
+	@echo "  run-example          - Build and run with example config"
 
 # Build targets
 .PHONY: build
@@ -96,14 +90,6 @@ test-performance:
 	@mkdir -p $(TEST_DIR)/logs
 	$(GOTEST) -v -run "^TestBasic|^TestPerformance|^TestMemory|^TestData" ./test/integration 2>&1 | tee $(TEST_DIR)/logs/benchmark_output.log
 
-.PHONY: test-coverage
-test-coverage:
-	@echo "Running tests with coverage..."
-	@mkdir -p $(TEST_DIR)/logs
-	$(GOTEST) -coverprofile=$(COVERAGE_FILE) ./...
-	$(GOCMD) tool cover -html=$(COVERAGE_FILE) -o $(COVERAGE_HTML)
-	@echo "Coverage report generated: $(COVERAGE_HTML)"
-
 .PHONY: test-verbose
 test-verbose:
 	@echo "Running all tests with verbose output..."
@@ -114,13 +100,6 @@ test-verbose:
 	$(GOTEST) -v ./internal/forecast 2>&1 | tee $(TEST_DIR)/logs/forecast_test_output.log
 	@echo "Running integration tests..."
 	$(GOTEST) -v ./test/integration 2>&1 | tee $(TEST_DIR)/logs/integration_test_output.log
-
-.PHONY: test-scripts
-test-scripts:
-	@echo "Running test scripts..."
-	@chmod +x $(TEST_DIR)/scripts/run_tests.sh
-	@chmod +x $(TEST_DIR)/scripts/run_all_tests.sh
-	$(TEST_DIR)/scripts/run_tests.sh
 
 # Quality targets
 .PHONY: fmt
@@ -151,17 +130,6 @@ deps:
 	$(GOMOD) verify
 	$(GOMOD) tidy
 
-# Run targets
-.PHONY: run
-run: build
-	@echo "Running $(BINARY_NAME) with example configuration..."
-	./$(BINARY_NAME) -config=./config.yaml.example -output-format=csv
-
-.PHONY: run-pretty
-run-pretty: build
-	@echo "Running $(BINARY_NAME) with pretty output..."
-	./$(BINARY_NAME) -config=./config.yaml.example -output-format=pretty
-
 # Installation
 .PHONY: install
 install:
@@ -170,18 +138,11 @@ install:
 
 # Cleanup targets
 .PHONY: clean
-clean: clean-logs
+clean:
 	@echo "Cleaning build artifacts..."
 	$(GOCLEAN)
 	@rm -f $(BINARY_NAME)
 	@rm -rf $(BUILD_DIR)
-
-.PHONY: clean-logs
-clean-logs:
-	@echo "Cleaning test logs..."
-	@rm -f $(TEST_DIR)/logs/*.log
-	@rm -f $(TEST_DIR)/logs/*.out
-	@rm -f $(TEST_DIR)/logs/*.html
 
 # Development targets
 .PHONY: dev-setup
@@ -194,58 +155,10 @@ dev-setup: deps
 	@echo "Development environment ready!"
 
 .PHONY: check
-check: fmt vet lint test
+check: fmt vet lint test-all
 	@echo "All checks passed!"
 
-# Git hooks
-.PHONY: pre-commit
-pre-commit: fmt vet test-unit
-	@echo "Pre-commit checks passed!"
-
-# Release targets
-.PHONY: release-check
-release-check: clean build-all test-coverage
-	@echo "Release validation completed!"
-
-# File organization targets
-.PHONY: organize-tests
-organize-tests:
-	@echo "Test artifacts are already organized in $(TEST_DIR)/"
-	@echo "Structure:"
-	@echo "  $(TEST_DIR)/baseline/  - Test baseline files"
-	@echo "  $(TEST_DIR)/docs/      - Test documentation"
-	@echo "  $(TEST_DIR)/logs/      - Test output logs"
-	@echo "  $(TEST_DIR)/scripts/   - Test execution scripts"
-
-.PHONY: check-organization
-check-organization:
-	@echo "Running project organization check..."
-	@chmod +x $(TEST_DIR)/scripts/check_organization.sh
-	@$(TEST_DIR)/scripts/check_organization.sh
-
-# Show project status
-.PHONY: status
-status:
-	@echo "Finance Forecast Project Status"
-	@echo "==============================="
-	@echo "Go version: $(shell $(GOCMD) version)"
-	@echo "Module: $(GO_MODULE)"
-	@echo "Binary: $(BINARY_NAME)"
-	@echo "Test directory: $(TEST_DIR)/"
-	@echo ""
-	@echo "Files:"
-	@echo "  Source files: $(shell find . -name '*.go' -not -path './vendor/*' | wc -l | tr -d ' ')"
-	@echo "  Test files: $(shell find . -name '*_test.go' -not -path './vendor/*' | wc -l | tr -d ' ')"
-	@echo "  Dependencies: $(shell $(GOCMD) list -m all | wc -l | tr -d ' ')"
-	@echo ""
-	@if [ -f $(BINARY_NAME) ]; then \
-		echo "Binary: $(BINARY_NAME) ($(shell ls -lh $(BINARY_NAME) | awk '{print $$5}'))"; \
-	else \
-		echo "Binary: Not built"; \
-	fi
-
-validate: ## Validate the application with example config
-	go test -run TestValidateApplication -v
-
-run-example: build ## Run with example configuration
+.PHONY: run-example
+run-example: build
+	@echo "Building and running with example configuration..."
 	./finance-forecast --config config.yaml.example
