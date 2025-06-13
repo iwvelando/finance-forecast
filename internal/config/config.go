@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iwvelando/finance-forecast/pkg/config"
+	"github.com/iwvelando/finance-forecast/pkg/configprocessor"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
-	"github.com/iwvelando/finance-forecast/pkg/events"
 	"github.com/spf13/viper"
 )
 
@@ -40,15 +39,12 @@ type Scenario struct {
 
 // Event indicates a financial event.
 type Event struct {
-	Name         string
-	Amount       float64
-	StartDate    string
-	EndDate      string
-	Frequency    int // months
-	StockSymbol  string
-	StockUnits   float64
-	StockTaxRate float64
-	DateList     []time.Time
+	Name      string
+	Amount    float64
+	StartDate string
+	EndDate   string
+	Frequency int // months
+	DateList  []time.Time
 }
 
 // LoadConfiguration takes a file path as input and loads the YAML-formatted
@@ -115,69 +111,6 @@ func (conf *Configuration) ParseDateLists() error {
 	return nil
 }
 
-// ProcessStockEvents determines the amount for any events declaring a stock symbol
-func (conf *Configuration) ProcessStockEvents() error {
-	processor := events.NewProcessor()
-
-	// Convert config events to events.Event format for scenarios
-	for i, scenario := range conf.Scenarios {
-		var eventPtrs []*events.Event
-		for j := range scenario.Events {
-			eventPtr := &events.Event{
-				Name:         conf.Scenarios[i].Events[j].Name,
-				Amount:       conf.Scenarios[i].Events[j].Amount,
-				StartDate:    conf.Scenarios[i].Events[j].StartDate,
-				EndDate:      conf.Scenarios[i].Events[j].EndDate,
-				Frequency:    conf.Scenarios[i].Events[j].Frequency,
-				StockSymbol:  conf.Scenarios[i].Events[j].StockSymbol,
-				StockUnits:   conf.Scenarios[i].Events[j].StockUnits,
-				StockTaxRate: conf.Scenarios[i].Events[j].StockTaxRate,
-				DateList:     conf.Scenarios[i].Events[j].DateList,
-			}
-			eventPtrs = append(eventPtrs, eventPtr)
-		}
-
-		err := processor.ProcessStockEvents(eventPtrs)
-		if err != nil {
-			return err
-		}
-
-		// Copy back the computed amounts
-		for j, eventPtr := range eventPtrs {
-			conf.Scenarios[i].Events[j].Amount = eventPtr.Amount
-		}
-	}
-
-	// Convert config events to events.Event format for common events
-	var commonEventPtrs []*events.Event
-	for i := range conf.Common.Events {
-		eventPtr := &events.Event{
-			Name:         conf.Common.Events[i].Name,
-			Amount:       conf.Common.Events[i].Amount,
-			StartDate:    conf.Common.Events[i].StartDate,
-			EndDate:      conf.Common.Events[i].EndDate,
-			Frequency:    conf.Common.Events[i].Frequency,
-			StockSymbol:  conf.Common.Events[i].StockSymbol,
-			StockUnits:   conf.Common.Events[i].StockUnits,
-			StockTaxRate: conf.Common.Events[i].StockTaxRate,
-			DateList:     conf.Common.Events[i].DateList,
-		}
-		commonEventPtrs = append(commonEventPtrs, eventPtr)
-	}
-
-	err := processor.ProcessStockEvents(commonEventPtrs)
-	if err != nil {
-		return err
-	}
-
-	// Copy back the computed amounts
-	for i, eventPtr := range commonEventPtrs {
-		conf.Common.Events[i].Amount = eventPtr.Amount
-	}
-
-	return nil
-}
-
 // FormDateList handles the date to time.Time parsing for one given event.
 func (event *Event) FormDateList(conf Configuration) error {
 	dateList := make([]time.Time, 1)
@@ -228,12 +161,12 @@ func (event *Event) FormDateList(conf Configuration) error {
 // ValidateConfiguration checks for edge cases and returns warnings
 // This function identifies potential issues without failing the configuration
 func (conf *Configuration) ValidateConfiguration() []string {
-	processor := config.NewProcessor()
+	processor := configprocessor.NewProcessor()
 
 	// Convert common events
-	var commonEvents []config.EventInfo
+	var commonEvents []configprocessor.EventInfo
 	for _, event := range conf.Common.Events {
-		commonEvents = append(commonEvents, config.EventInfo{
+		commonEvents = append(commonEvents, configprocessor.EventInfo{
 			Name:      event.Name,
 			StartDate: event.StartDate,
 			EndDate:   event.EndDate,
@@ -241,9 +174,9 @@ func (conf *Configuration) ValidateConfiguration() []string {
 	}
 
 	// Convert common loans
-	var commonLoans []config.LoanInfo
+	var commonLoans []configprocessor.LoanInfo
 	for _, loan := range conf.Common.Loans {
-		commonLoans = append(commonLoans, config.LoanInfo{
+		commonLoans = append(commonLoans, configprocessor.LoanInfo{
 			Name:      loan.Name,
 			StartDate: loan.StartDate,
 			Term:      loan.Term,
@@ -251,27 +184,27 @@ func (conf *Configuration) ValidateConfiguration() []string {
 	}
 
 	// Convert scenarios
-	var scenarios []config.ScenarioInfo
+	var scenarios []configprocessor.ScenarioInfo
 	for _, scenario := range conf.Scenarios {
-		var scenarioEvents []config.EventInfo
+		var scenarioEvents []configprocessor.EventInfo
 		for _, event := range scenario.Events {
-			scenarioEvents = append(scenarioEvents, config.EventInfo{
+			scenarioEvents = append(scenarioEvents, configprocessor.EventInfo{
 				Name:      event.Name,
 				StartDate: event.StartDate,
 				EndDate:   event.EndDate,
 			})
 		}
 
-		var scenarioLoans []config.LoanInfo
+		var scenarioLoans []configprocessor.LoanInfo
 		for _, loan := range scenario.Loans {
-			scenarioLoans = append(scenarioLoans, config.LoanInfo{
+			scenarioLoans = append(scenarioLoans, configprocessor.LoanInfo{
 				Name:      loan.Name,
 				StartDate: loan.StartDate,
 				Term:      loan.Term,
 			})
 		}
 
-		scenarios = append(scenarios, config.ScenarioInfo{
+		scenarios = append(scenarios, configprocessor.ScenarioInfo{
 			Name:   scenario.Name,
 			Active: scenario.Active,
 			Events: scenarioEvents,

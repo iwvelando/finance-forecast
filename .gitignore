@@ -18,5 +18,9 @@
 *.log
 /test/logs/
 
+# Copilot likes logging in docs directories
+/docs/
+/test/docs/
+
 /config.yaml
 /finance-forecast

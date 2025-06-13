@@ -422,33 +422,16 @@ func TestComputeAmount(t *testing.T) {
 		Common: Common{
 			Events: []Event{
 				{
-					Name:   "Event without stock symbol",
+					Name:   "Regular event",
 					Amount: 100.0,
-				},
-				{
-					Name:         "Event with stock symbol",
-					StockSymbol:  "AAPL",
-					StockUnits:   10,
-					StockTaxRate: 0.15,
 				},
 			},
 		},
 	}
 
-	err := config.ProcessStockEvents()
-	if err != nil {
-		// Note: Stock API calls might fail in testing environment
-		t.Logf("ProcessStockEvents() error = %v (may be expected in test environment)", err)
-	}
-
-	// Test that events without stock symbols retain their original amount
+	// Test that events retain their original amount
 	if config.Common.Events[0].Amount != 100.0 {
-		t.Errorf("Expected amount to remain 100.0 for event without stock symbol, got %v", config.Common.Events[0].Amount)
-	}
-
-	// Test that events with stock symbols have their amount computed (if API call succeeded)
-	if err == nil && config.Common.Events[1].StockSymbol != "" && config.Common.Events[1].Amount == 0 {
-		t.Errorf("Expected amount to be computed for event with stock symbol")
+		t.Errorf("Expected amount to remain 100.0 for regular event, got %v", config.Common.Events[0].Amount)
 	}
 }
 

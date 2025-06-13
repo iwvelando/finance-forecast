@@ -31,12 +31,6 @@ func TestMainIntegrationBaseline(t *testing.T) {
 		t.Fatalf("ParseDateLists() error = %v", err)
 	}
 
-	err = conf.ProcessStockEvents()
-	if err != nil {
-		// Stock events might fail in test environment, skip if so
-		t.Logf("ProcessStockEvents() error = %v (may be expected in test environment)", err)
-	}
-
 	err = conf.ProcessLoans(logger)
 	if err != nil {
 		t.Fatalf("ProcessLoans() error = %v", err)

@@ -5,20 +5,16 @@ import (
 	"time"
 
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
-	"github.com/piquette/finance-go/quote"
 )
 
 // Event represents a financial event with date processing capabilities.
 type Event struct {
-	Name         string
-	Amount       float64
-	StartDate    string
-	EndDate      string
-	Frequency    int // months
-	StockSymbol  string
-	StockUnits   float64
-	StockTaxRate float64
-	DateList     []time.Time
+	Name      string
+	Amount    float64
+	StartDate string
+	EndDate   string
+	Frequency int // months
+	DateList  []time.Time
 }
 
 // Processor handles event processing operations
@@ -29,39 +25,13 @@ func NewProcessor() *Processor {
 	return &Processor{}
 }
 
-// ProcessStockEvents determines the amount for any events declaring a stock symbol
-func (p *Processor) ProcessStockEvents(events []*Event) error {
-	for _, event := range events {
-		if err := event.ComputeAmount(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ParseDateLists processes date lists for multiple events
+// ProcessDateLists processes date lists for multiple events
 func (p *Processor) ParseDateLists(events []*Event, deathDate string) error {
 	for _, event := range events {
 		if err := event.FormDateList(deathDate); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-// ComputeAmount determines Amount if Stock parameters have been set
-func (event *Event) ComputeAmount() error {
-	if event.StockSymbol == "" {
-		return nil
-	}
-
-	price, err := quote.Get(event.StockSymbol)
-	if err != nil {
-		return err
-	}
-
-	event.Amount = event.StockUnits * (1 - event.StockTaxRate) * price.RegularMarketPrice
-
 	return nil
 }
 

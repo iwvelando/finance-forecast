@@ -1,5 +1,5 @@
-// Package config provides shared configuration processing utilities.
-package config
+// Package configprocessor provides shared configuration processing utilities.
+package configprocessor
 
 import (
 	"github.com/iwvelando/finance-forecast/pkg/validation"
