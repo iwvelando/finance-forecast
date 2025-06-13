@@ -4,9 +4,9 @@ package config
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
+	"github.com/iwvelando/finance-forecast/pkg/loans"
 	"github.com/iwvelando/finance-forecast/pkg/mathutil"
 	"go.uber.org/zap"
 )
@@ -76,11 +76,8 @@ func (conf *Configuration) ProcessLoans(logger *zap.Logger) error {
 // when trading in vehicles or upgrading homes). TODO this function is a mouth
 // full and is a candidate for being revised.
 func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration) error {
-	// Compute periodic payment fundamentals.
-	periodicInterestRate := loan.InterestRate / (100.0 * 12.0)
-	power := math.Pow((1.00 + periodicInterestRate), float64(loan.Term))
-	discountFactor := (power - 1.00) / power
-	loanPayment := (loan.Principal - loan.DownPayment) * periodicInterestRate / discountFactor
+	// Compute periodic payment fundamentals using pkg/loans utility
+	loanPayment := loans.CalculateMonthlyPayment(loan.Principal, loan.DownPayment, loan.InterestRate, loan.Term)
 
 	loan.AmortizationSchedule = make(map[string]Payment)
 
@@ -92,7 +89,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 		return err
 	}
 	firstPayment.Payment = loanPayment + loan.Escrow + loan.DownPayment + extraPrincipal
-	firstPayment.Interest = (loan.Principal - loan.DownPayment) * loan.InterestRate / (100.0 * 12.0)
+	firstPayment.Interest = loans.CalculateInterestPayment(loan.Principal-loan.DownPayment, loan.InterestRate)
 	firstPayment.Principal = loanPayment - firstPayment.Interest + extraPrincipal
 	firstPayment.RemainingPrincipal = (loan.Principal - loan.DownPayment) - firstPayment.Principal
 	firstPayment.RefundableEscrow = loan.Escrow
@@ -179,7 +176,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 			}
 
 			currentPayment.Payment = loanPayment + loan.Escrow + extraPrincipal
-			currentPayment.Interest = loan.AmortizationSchedule[previousMonth].RemainingPrincipal * loan.InterestRate / (100.0 * 12.0)
+			currentPayment.Interest = loans.CalculateInterestPayment(loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.InterestRate)
 			currentPayment.Principal = loanPayment - currentPayment.Interest + extraPrincipal
 
 			// Ensure we do not overpay on extra principal
@@ -189,7 +186,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 				// extra principal.
 				extraPrincipal = currentPayment.Principal - loan.AmortizationSchedule[previousMonth].RemainingPrincipal
 				currentPayment.Payment = loanPayment + loan.Escrow + extraPrincipal
-				currentPayment.Interest = loan.AmortizationSchedule[previousMonth].RemainingPrincipal * loan.InterestRate / (100.0 * 12.0)
+				currentPayment.Interest = loans.CalculateInterestPayment(loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.InterestRate)
 				logger.Debug(fmt.Sprintf("%s: adjusting extraPrincipal to %.2f to prevent overpayment for loan %s", currentMonth, extraPrincipal, loan.Name),
 					zap.String("op", "config.GetAmortizationSchedule"),
 				)
@@ -200,7 +197,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 				// be the appropriate non-positive value to make this adjustment.
 				extraPrincipal = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - (currentPayment.Principal - extraPrincipal)
 				currentPayment.Payment = loanPayment + loan.Escrow + extraPrincipal
-				currentPayment.Interest = loan.AmortizationSchedule[previousMonth].RemainingPrincipal * loan.InterestRate / (100.0 * 12.0)
+				currentPayment.Interest = loans.CalculateInterestPayment(loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.InterestRate)
 				currentPayment.Principal = loanPayment - currentPayment.Interest + extraPrincipal
 				logger.Debug(fmt.Sprintf("%s: adjusting extraPrincipal to %.2f to prevent overpayment for loan %s", currentMonth, extraPrincipal, loan.Name),
 					zap.String("op", "config.GetAmortizationSchedule"),

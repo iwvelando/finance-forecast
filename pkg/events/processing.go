@@ -21,6 +21,34 @@ type Event struct {
 	DateList     []time.Time
 }
 
+// Processor handles event processing operations
+type Processor struct{}
+
+// NewProcessor creates a new event processor
+func NewProcessor() *Processor {
+	return &Processor{}
+}
+
+// ProcessStockEvents determines the amount for any events declaring a stock symbol
+func (p *Processor) ProcessStockEvents(events []*Event) error {
+	for _, event := range events {
+		if err := event.ComputeAmount(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ParseDateLists processes date lists for multiple events
+func (p *Processor) ParseDateLists(events []*Event, deathDate string) error {
+	for _, event := range events {
+		if err := event.FormDateList(deathDate); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ComputeAmount determines Amount if Stock parameters have been set
 func (event *Event) ComputeAmount() error {
 	if event.StockSymbol == "" {

@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/iwvelando/finance-forecast/pkg/config"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
-	"github.com/iwvelando/finance-forecast/pkg/datetime"
-	"github.com/iwvelando/finance-forecast/pkg/validation"
-	"github.com/piquette/finance-go/quote"
+	"github.com/iwvelando/finance-forecast/pkg/events"
 	"github.com/spf13/viper"
 )
 
@@ -118,39 +117,63 @@ func (conf *Configuration) ParseDateLists() error {
 
 // ProcessStockEvents determines the amount for any events declaring a stock symbol
 func (conf *Configuration) ProcessStockEvents() error {
-	// First handle the processing for all Events in Scenarios.
-	for i, scenario := range conf.Scenarios {
-		for j := range scenario.Events {
-			err := conf.Scenarios[i].Events[j].ComputeAmount()
-			if err != nil {
-				return err
-			}
-		}
-	}
+	processor := events.NewProcessor()
 
-	// Next handle the processing for the Common Events.
-	for i := range conf.Common.Events {
-		err := conf.Common.Events[i].ComputeAmount()
+	// Convert config events to events.Event format for scenarios
+	for i, scenario := range conf.Scenarios {
+		var eventPtrs []*events.Event
+		for j := range scenario.Events {
+			eventPtr := &events.Event{
+				Name:         conf.Scenarios[i].Events[j].Name,
+				Amount:       conf.Scenarios[i].Events[j].Amount,
+				StartDate:    conf.Scenarios[i].Events[j].StartDate,
+				EndDate:      conf.Scenarios[i].Events[j].EndDate,
+				Frequency:    conf.Scenarios[i].Events[j].Frequency,
+				StockSymbol:  conf.Scenarios[i].Events[j].StockSymbol,
+				StockUnits:   conf.Scenarios[i].Events[j].StockUnits,
+				StockTaxRate: conf.Scenarios[i].Events[j].StockTaxRate,
+				DateList:     conf.Scenarios[i].Events[j].DateList,
+			}
+			eventPtrs = append(eventPtrs, eventPtr)
+		}
+
+		err := processor.ProcessStockEvents(eventPtrs)
 		if err != nil {
 			return err
 		}
+
+		// Copy back the computed amounts
+		for j, eventPtr := range eventPtrs {
+			conf.Scenarios[i].Events[j].Amount = eventPtr.Amount
+		}
 	}
 
-	return nil
-}
-
-// ComputeAmount determines Amount of Stock parameters have been set
-func (event *Event) ComputeAmount() error {
-	if event.StockSymbol == "" {
-		return nil
+	// Convert config events to events.Event format for common events
+	var commonEventPtrs []*events.Event
+	for i := range conf.Common.Events {
+		eventPtr := &events.Event{
+			Name:         conf.Common.Events[i].Name,
+			Amount:       conf.Common.Events[i].Amount,
+			StartDate:    conf.Common.Events[i].StartDate,
+			EndDate:      conf.Common.Events[i].EndDate,
+			Frequency:    conf.Common.Events[i].Frequency,
+			StockSymbol:  conf.Common.Events[i].StockSymbol,
+			StockUnits:   conf.Common.Events[i].StockUnits,
+			StockTaxRate: conf.Common.Events[i].StockTaxRate,
+			DateList:     conf.Common.Events[i].DateList,
+		}
+		commonEventPtrs = append(commonEventPtrs, eventPtr)
 	}
 
-	price, err := quote.Get(event.StockSymbol)
+	err := processor.ProcessStockEvents(commonEventPtrs)
 	if err != nil {
 		return err
 	}
 
-	event.Amount = event.StockUnits * (1 - event.StockTaxRate) * price.RegularMarketPrice
+	// Copy back the computed amounts
+	for i, eventPtr := range commonEventPtrs {
+		conf.Common.Events[i].Amount = eventPtr.Amount
+	}
 
 	return nil
 }
@@ -202,67 +225,59 @@ func (event *Event) FormDateList(conf Configuration) error {
 	return nil
 }
 
-// OffsetDate returns the string-formatted date offset by the given number of
-// months relative to the given date.
-func OffsetDate(date, layout string, months int) (string, error) {
-	return datetime.OffsetDate(date, layout, months)
-}
-
-// CheckMonth identifies whether a given date is in the month indicated by the
-// numeric representation e.g. 01 = January and 12 = December.
-func CheckMonth(date string, month string) (bool, error) {
-	return datetime.CheckMonth(date, month)
-}
-
-// DateBeforeDate returns true if firstDate is strictly before secondDate.
-func DateBeforeDate(firstDate string, secondDate string) (bool, error) {
-	return datetime.DateBeforeDate(firstDate, secondDate)
-}
-
 // ValidateConfiguration checks for edge cases and returns warnings
 // This function identifies potential issues without failing the configuration
 func (conf *Configuration) ValidateConfiguration() []string {
-	var warnings []string
+	processor := config.NewProcessor()
 
-	deathDate := conf.Common.DeathDate
-
-	// Check common events for dates at or after death
+	// Convert common events
+	var commonEvents []config.EventInfo
 	for _, event := range conf.Common.Events {
-		eventWarnings := validation.ValidateEventDates(event.Name, event.StartDate, event.EndDate, deathDate)
-		warnings = append(warnings, eventWarnings...)
+		commonEvents = append(commonEvents, config.EventInfo{
+			Name:      event.Name,
+			StartDate: event.StartDate,
+			EndDate:   event.EndDate,
+		})
 	}
 
-	// Check scenario events for dates at or after death
-	for _, scenario := range conf.Scenarios {
-		if !scenario.Active {
-			continue
-		}
-		for _, event := range scenario.Events {
-			eventWarnings := validation.ValidateEventDates(fmt.Sprintf("Scenario '%s' event '%s'", scenario.Name, event.Name), event.StartDate, event.EndDate, deathDate)
-			warnings = append(warnings, eventWarnings...)
-		}
-	}
-
-	// Check common loans for terms extending past death
+	// Convert common loans
+	var commonLoans []config.LoanInfo
 	for _, loan := range conf.Common.Loans {
-		warning, err := validation.ValidateDeathDate(fmt.Sprintf("Common loan '%s'", loan.Name), loan.StartDate, deathDate, loan.Term)
-		if err == nil && warning != "" {
-			warnings = append(warnings, warning)
-		}
+		commonLoans = append(commonLoans, config.LoanInfo{
+			Name:      loan.Name,
+			StartDate: loan.StartDate,
+			Term:      loan.Term,
+		})
 	}
 
-	// Check scenario loans for terms extending past death
+	// Convert scenarios
+	var scenarios []config.ScenarioInfo
 	for _, scenario := range conf.Scenarios {
-		if !scenario.Active {
-			continue
+		var scenarioEvents []config.EventInfo
+		for _, event := range scenario.Events {
+			scenarioEvents = append(scenarioEvents, config.EventInfo{
+				Name:      event.Name,
+				StartDate: event.StartDate,
+				EndDate:   event.EndDate,
+			})
 		}
+
+		var scenarioLoans []config.LoanInfo
 		for _, loan := range scenario.Loans {
-			warning, err := validation.ValidateDeathDate(fmt.Sprintf("Scenario '%s' loan '%s'", scenario.Name, loan.Name), loan.StartDate, deathDate, loan.Term)
-			if err == nil && warning != "" {
-				warnings = append(warnings, warning)
-			}
+			scenarioLoans = append(scenarioLoans, config.LoanInfo{
+				Name:      loan.Name,
+				StartDate: loan.StartDate,
+				Term:      loan.Term,
+			})
 		}
+
+		scenarios = append(scenarios, config.ScenarioInfo{
+			Name:   scenario.Name,
+			Active: scenario.Active,
+			Events: scenarioEvents,
+			Loans:  scenarioLoans,
+		})
 	}
 
-	return warnings
+	return processor.ValidateConfiguration(conf.Common.DeathDate, commonEvents, commonLoans, scenarios)
 }

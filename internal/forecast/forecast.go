@@ -8,6 +8,7 @@ import (
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
+	"github.com/iwvelando/finance-forecast/pkg/finance"
 	"go.uber.org/zap"
 )
 
@@ -84,23 +85,31 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 
 // HandleEvents sums all amounts for Events that occur on the input date.
 func HandleEvents(logger *zap.Logger, date string, events []config.Event, layout string) (float64, error) {
-	amount := 0.0
-	dateT, err := time.Parse(layout, date)
-	if err != nil {
-		return amount, err
-	}
+	// Convert config events to finance event interface
+	var financeEvents []finance.EventWithDates
 	for _, event := range events {
-		for _, eventDate := range event.DateList {
-			if dateT.Equal(eventDate) {
-				logger.Debug(fmt.Sprintf("%s: event %s is active for amount %.2f", date, event.Name, event.Amount),
-					zap.String("op", "forecast.HandleEvents"),
-				)
-				amount += event.Amount
-				break
-			}
-		}
+		financeEvents = append(financeEvents, configEventWrapper{event})
 	}
-	return amount, nil
+
+	processor := finance.NewEventProcessor(logger)
+	return processor.ProcessEventsForDate(date, financeEvents, layout)
+}
+
+// configEventWrapper wraps config.Event to implement finance.EventWithDates
+type configEventWrapper struct {
+	event config.Event
+}
+
+func (w configEventWrapper) GetName() string {
+	return w.event.Name
+}
+
+func (w configEventWrapper) GetAmount() float64 {
+	return w.event.Amount
+}
+
+func (w configEventWrapper) GetDateList() []time.Time {
+	return w.event.DateList
 }
 
 // HandleLoans identifies any loan-based financial events that occur on the

@@ -418,40 +418,37 @@ func TestDateBeforeDate(t *testing.T) {
 }
 
 func TestComputeAmount(t *testing.T) {
-	tests := []struct {
-		name      string
-		event     Event
-		wantError bool
-	}{
-		{
-			name: "Event without stock symbol",
-			event: Event{
-				Amount: 100.0,
+	config := &Configuration{
+		Common: Common{
+			Events: []Event{
+				{
+					Name:   "Event without stock symbol",
+					Amount: 100.0,
+				},
+				{
+					Name:         "Event with stock symbol",
+					StockSymbol:  "AAPL",
+					StockUnits:   10,
+					StockTaxRate: 0.15,
+				},
 			},
-			wantError: false,
-		},
-		{
-			name: "Event with stock symbol",
-			event: Event{
-				StockSymbol:  "AAPL",
-				StockUnits:   10,
-				StockTaxRate: 0.15,
-			},
-			wantError: false, // Note: this will make a real API call
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.event.ComputeAmount()
-			if tt.wantError && err == nil {
-				t.Errorf("ComputeAmount() expected error but got none")
-			}
-			if !tt.wantError && err != nil {
-				// Note: Stock API calls might fail in testing environment
-				t.Logf("ComputeAmount() error = %v (may be expected in test environment)", err)
-			}
-		})
+	err := config.ProcessStockEvents()
+	if err != nil {
+		// Note: Stock API calls might fail in testing environment
+		t.Logf("ProcessStockEvents() error = %v (may be expected in test environment)", err)
+	}
+
+	// Test that events without stock symbols retain their original amount
+	if config.Common.Events[0].Amount != 100.0 {
+		t.Errorf("Expected amount to remain 100.0 for event without stock symbol, got %v", config.Common.Events[0].Amount)
+	}
+
+	// Test that events with stock symbols have their amount computed (if API call succeeded)
+	if err == nil && config.Common.Events[1].StockSymbol != "" && config.Common.Events[1].Amount == 0 {
+		t.Errorf("Expected amount to be computed for event with stock symbol")
 	}
 }
 
