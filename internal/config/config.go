@@ -4,16 +4,18 @@ package config
 
 import (
 	"fmt"
-	"math"
 	"time"
 
+	"github.com/iwvelando/finance-forecast/pkg/constants"
+	"github.com/iwvelando/finance-forecast/pkg/datetime"
+	"github.com/iwvelando/finance-forecast/pkg/validation"
 	"github.com/piquette/finance-go/quote"
 	"github.com/spf13/viper"
 )
 
 // DateTimeLayout is the format expected in config files and is also the output
 // date format.
-const DateTimeLayout = "2006-01"
+const DateTimeLayout = constants.DateTimeLayout
 
 // Configuration holds all configuration for finance-forecast.
 type Configuration struct {
@@ -200,10 +202,21 @@ func (event *Event) FormDateList(conf Configuration) error {
 	return nil
 }
 
-// Round rounds a value to two decimals, i.e. to represent real currency. Used
-// for making logical comparisons.
-func Round(val float64) float64 {
-	return math.Round(val*100) / 100
+// OffsetDate returns the string-formatted date offset by the given number of
+// months relative to the given date.
+func OffsetDate(date, layout string, months int) (string, error) {
+	return datetime.OffsetDate(date, layout, months)
+}
+
+// CheckMonth identifies whether a given date is in the month indicated by the
+// numeric representation e.g. 01 = January and 12 = December.
+func CheckMonth(date string, month string) (bool, error) {
+	return datetime.CheckMonth(date, month)
+}
+
+// DateBeforeDate returns true if firstDate is strictly before secondDate.
+func DateBeforeDate(firstDate string, secondDate string) (bool, error) {
+	return datetime.DateBeforeDate(firstDate, secondDate)
 }
 
 // ValidateConfiguration checks for edge cases and returns warnings
@@ -215,14 +228,8 @@ func (conf *Configuration) ValidateConfiguration() []string {
 
 	// Check common events for dates at or after death
 	for _, event := range conf.Common.Events {
-		if event.StartDate >= deathDate {
-			warnings = append(warnings, fmt.Sprintf("Common event '%s' starts at or after death date (%s >= %s)",
-				event.Name, event.StartDate, deathDate))
-		}
-		if event.EndDate != "" && event.EndDate > deathDate {
-			warnings = append(warnings, fmt.Sprintf("Common event '%s' ends after death date (%s > %s)",
-				event.Name, event.EndDate, deathDate))
-		}
+		eventWarnings := validation.ValidateEventDates(event.Name, event.StartDate, event.EndDate, deathDate)
+		warnings = append(warnings, eventWarnings...)
 	}
 
 	// Check scenario events for dates at or after death
@@ -231,23 +238,16 @@ func (conf *Configuration) ValidateConfiguration() []string {
 			continue
 		}
 		for _, event := range scenario.Events {
-			if event.StartDate >= deathDate {
-				warnings = append(warnings, fmt.Sprintf("Scenario '%s' event '%s' starts at or after death date (%s >= %s)",
-					scenario.Name, event.Name, event.StartDate, deathDate))
-			}
-			if event.EndDate != "" && event.EndDate > deathDate {
-				warnings = append(warnings, fmt.Sprintf("Scenario '%s' event '%s' ends after death date (%s > %s)",
-					scenario.Name, event.Name, event.EndDate, deathDate))
-			}
+			eventWarnings := validation.ValidateEventDates(fmt.Sprintf("Scenario '%s' event '%s'", scenario.Name, event.Name), event.StartDate, event.EndDate, deathDate)
+			warnings = append(warnings, eventWarnings...)
 		}
 	}
 
 	// Check common loans for terms extending past death
 	for _, loan := range conf.Common.Loans {
-		maturityDate, err := OffsetDate(loan.StartDate, DateTimeLayout, loan.Term)
-		if err == nil && maturityDate > deathDate {
-			warnings = append(warnings, fmt.Sprintf("Common loan '%s' matures after death date (%s > %s) - loan will have outstanding balance",
-				loan.Name, maturityDate, deathDate))
+		warning, err := validation.ValidateDeathDate(fmt.Sprintf("Common loan '%s'", loan.Name), loan.StartDate, deathDate, loan.Term)
+		if err == nil && warning != "" {
+			warnings = append(warnings, warning)
 		}
 	}
 
@@ -257,10 +257,9 @@ func (conf *Configuration) ValidateConfiguration() []string {
 			continue
 		}
 		for _, loan := range scenario.Loans {
-			maturityDate, err := OffsetDate(loan.StartDate, DateTimeLayout, loan.Term)
-			if err == nil && maturityDate > deathDate {
-				warnings = append(warnings, fmt.Sprintf("Scenario '%s' loan '%s' matures after death date (%s > %s) - loan will have outstanding balance",
-					scenario.Name, loan.Name, maturityDate, deathDate))
+			warning, err := validation.ValidateDeathDate(fmt.Sprintf("Scenario '%s' loan '%s'", scenario.Name, loan.Name), loan.StartDate, deathDate, loan.Term)
+			if err == nil && warning != "" {
+				warnings = append(warnings, warning)
 			}
 		}
 	}

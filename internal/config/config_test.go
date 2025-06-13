@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/iwvelando/finance-forecast/pkg/datetime"
+	"github.com/iwvelando/finance-forecast/pkg/mathutil"
 	"go.uber.org/zap"
 )
 
@@ -221,7 +223,7 @@ func TestRound(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Round(tt.input)
+			result := mathutil.Round(tt.input)
 			if math.Abs(result-tt.expected) > 0.001 {
 				t.Errorf("Round(%v) = %v, expected %v", tt.input, result, tt.expected)
 			}
@@ -274,7 +276,7 @@ func TestOffsetDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := OffsetDate(tt.date, tt.layout, tt.months)
+			result, err := datetime.OffsetDate(tt.date, tt.layout, tt.months)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("OffsetDate() expected error but got none")
@@ -332,7 +334,7 @@ func TestCheckMonth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := CheckMonth(tt.date, tt.month)
+			result, err := datetime.CheckMonth(tt.date, tt.month)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("CheckMonth() expected error but got none")
@@ -397,7 +399,7 @@ func TestDateBeforeDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := DateBeforeDate(tt.firstDate, tt.secondDate)
+			result, err := datetime.DateBeforeDate(tt.firstDate, tt.secondDate)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("DateBeforeDate() expected error but got none")

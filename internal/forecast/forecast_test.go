@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
+	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"go.uber.org/zap"
 )
 
@@ -25,13 +26,13 @@ func TestHandleEvents(t *testing.T) {
 
 	// Manually set date lists for testing
 	events[0].DateList = []time.Time{
-		mustParseTime("2025-06"),
-		mustParseTime("2025-07"),
-		mustParseTime("2025-08"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-06"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-07"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-08"),
 	}
 	events[1].DateList = []time.Time{
-		mustParseTime("2025-06"),
-		mustParseTime("2025-09"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-06"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-09"),
 	}
 
 	tests := []struct {
@@ -154,13 +155,13 @@ func TestGetForecast(t *testing.T) {
 
 	// Set up date lists manually for testing
 	conf.Common.Events[0].DateList = []time.Time{
-		mustParseTime("2025-06"),
-		mustParseTime("2025-07"),
-		mustParseTime("2025-08"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-06"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-07"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-08"),
 	}
 	conf.Scenarios[0].Events[0].DateList = []time.Time{
-		mustParseTime("2025-06"),
-		mustParseTime("2025-07"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-06"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-07"),
 	}
 
 	results, err := GetForecast(logger, conf)
@@ -223,15 +224,6 @@ func TestGetForecastInactiveScenario(t *testing.T) {
 	if results[0].Name != "Active Scenario" {
 		t.Errorf("Expected 'Active Scenario', got '%s'", results[0].Name)
 	}
-}
-
-// Helper function to parse time for testing
-func mustParseTime(dateStr string) time.Time {
-	t, err := time.Parse(config.DateTimeLayout, dateStr)
-	if err != nil {
-		panic(err)
-	}
-	return t
 }
 
 // Test with realistic data similar to the example config

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
+	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"go.uber.org/zap"
 )
 
@@ -37,7 +38,7 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 		result.Data[startDate] = conf.Common.StartingValue
 		previousDate := startDate
 		for {
-			date, err := config.OffsetDate(previousDate, config.DateTimeLayout, 1)
+			date, err := datetime.OffsetDate(previousDate, config.DateTimeLayout, 1)
 			if err != nil {
 				return results, err
 			}

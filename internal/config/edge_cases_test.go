@@ -252,11 +252,9 @@ func TestMathematicalValidation(t *testing.T) {
 		firstPayment.Interest > expectedFirstInterest+1 {
 		t.Errorf("First payment interest should be approximately %.2f, got %.2f",
 			expectedFirstInterest, firstPayment.Interest)
-	}
-
-	// Verify that payment = principal + interest for first payment
+	} // Verify that payment = principal + interest for first payment
 	calculatedPayment := firstPayment.Principal + firstPayment.Interest
-	if abs(calculatedPayment-firstPayment.Payment) > 0.01 {
+	if math.Abs(calculatedPayment-firstPayment.Payment) > 0.01 {
 		t.Errorf("Payment should equal principal + interest, got %.2f + %.2f = %.2f, expected %.2f",
 			firstPayment.Principal, firstPayment.Interest, calculatedPayment, firstPayment.Payment)
 	}
@@ -364,18 +362,11 @@ func TestAmortizationConsistency(t *testing.T) {
 
 		// Verify principal + interest = payment (for regular payments)
 		calculatedPayment := midPayment.Principal + midPayment.Interest
-		if abs(calculatedPayment-midPayment.Payment) > 1.0 {
+		if math.Abs(calculatedPayment-midPayment.Payment) > 1.0 {
 			t.Errorf("Principal + Interest should equal Payment for regular payment, got %.2f + %.2f != %.2f",
 				midPayment.Principal, midPayment.Interest, midPayment.Payment)
 		}
 	}
-}
-
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
 }
 
 // TestEventsAfterDeathDate tests that events starting at or after death date are handled gracefully
