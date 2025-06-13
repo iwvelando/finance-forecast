@@ -42,6 +42,40 @@ func TestLoadConfiguration(t *testing.T) {
 	}
 }
 
+func TestComputeAmount(t *testing.T) {
+	config := &Configuration{
+		Common: Common{
+			Events: []Event{
+				{
+					Name:   "Regular event",
+					Amount: 100.0,
+				},
+				{
+					Name:   "Negative event",
+					Amount: -50.0,
+				},
+				{
+					Name:   "Zero event",
+					Amount: 0.0,
+				},
+			},
+		},
+	}
+
+	// Test that events retain their original amount
+	if config.Common.Events[0].Amount != 100.0 {
+		t.Errorf("Expected amount 100.0, got %v", config.Common.Events[0].Amount)
+	}
+
+	if config.Common.Events[1].Amount != -50.0 {
+		t.Errorf("Expected amount -50.0, got %v", config.Common.Events[1].Amount)
+	}
+
+	if config.Common.Events[2].Amount != 0.0 {
+		t.Errorf("Expected amount 0.0, got %v", config.Common.Events[2].Amount)
+	}
+}
+
 func TestLoadConfigurationExample(t *testing.T) {
 	// Set up a no-op logger to prevent debug output during testing
 	logger := zap.NewNop()
@@ -251,7 +285,7 @@ func TestOffsetDate(t *testing.T) {
 		{
 			name:     "Add one month",
 			date:     "2025-01",
-			layout:   DateTimeLayout,
+			layout:   datetime.DateTimeLayout,
 			months:   1,
 			expected: "2025-02",
 			wantErr:  false,
@@ -259,7 +293,7 @@ func TestOffsetDate(t *testing.T) {
 		{
 			name:     "Add twelve months",
 			date:     "2025-01",
-			layout:   DateTimeLayout,
+			layout:   datetime.DateTimeLayout,
 			months:   12,
 			expected: "2026-01",
 			wantErr:  false,
@@ -267,7 +301,7 @@ func TestOffsetDate(t *testing.T) {
 		{
 			name:     "Subtract one month",
 			date:     "2025-02",
-			layout:   DateTimeLayout,
+			layout:   datetime.DateTimeLayout,
 			months:   -1,
 			expected: "2025-01",
 			wantErr:  false,
@@ -275,7 +309,7 @@ func TestOffsetDate(t *testing.T) {
 		{
 			name:     "Invalid date format",
 			date:     "invalid",
-			layout:   DateTimeLayout,
+			layout:   datetime.DateTimeLayout,
 			months:   1,
 			expected: "invalid",
 			wantErr:  true,
@@ -422,24 +456,6 @@ func TestDateBeforeDate(t *testing.T) {
 				t.Errorf("DateBeforeDate() = %v, expected %v", result, tt.expected)
 			}
 		})
-	}
-}
-
-func TestComputeAmount(t *testing.T) {
-	config := &Configuration{
-		Common: Common{
-			Events: []Event{
-				{
-					Name:   "Regular event",
-					Amount: 100.0,
-				},
-			},
-		},
-	}
-
-	// Test that events retain their original amount
-	if config.Common.Events[0].Amount != 100.0 {
-		t.Errorf("Expected amount to remain 100.0 for regular event, got %v", config.Common.Events[0].Amount)
 	}
 }
 
