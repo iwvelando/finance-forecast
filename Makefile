@@ -38,7 +38,7 @@ help:
 	@echo "  build-all            - Build for multiple platforms"
 	@echo "  test                 - Run unit and integration tests"
 	@echo "  test-all             - Run all tests including performance"
-	@echo "  test-unit            - Run unit tests only"
+	@echo "  test-unit            - Run unit tests only (internal + pkg packages)"
 	@echo "  test-integration     - Run integration tests only"
 	@echo "  test-performance     - Run performance tests only"
 	@echo "  test-verbose         - Run all tests with verbose output"
@@ -77,7 +77,7 @@ test-all: test-unit test-integration test-performance
 .PHONY: test-unit
 test-unit:
 	@echo "Running unit tests..."
-	$(GOTEST) $(TEST_FLAGS) ./internal/config ./internal/forecast
+	$(GOTEST) $(TEST_FLAGS) ./internal/... ./pkg/...
 
 .PHONY: test-integration
 test-integration:
@@ -94,10 +94,10 @@ test-performance:
 test-verbose:
 	@echo "Running all tests with verbose output..."
 	@mkdir -p $(TEST_DIR)/logs
-	@echo "Testing config package..."
-	$(GOTEST) -v ./internal/config 2>&1 | tee $(TEST_DIR)/logs/config_test_output.log
-	@echo "Testing forecast package..."
-	$(GOTEST) -v ./internal/forecast 2>&1 | tee $(TEST_DIR)/logs/forecast_test_output.log
+	@echo "Testing internal packages..."
+	$(GOTEST) -v ./internal/... 2>&1 | tee $(TEST_DIR)/logs/internal_test_output.log
+	@echo "Testing pkg packages..."
+	$(GOTEST) -v ./pkg/... 2>&1 | tee $(TEST_DIR)/logs/pkg_test_output.log
 	@echo "Running integration tests..."
 	$(GOTEST) -v ./test/integration 2>&1 | tee $(TEST_DIR)/logs/integration_test_output.log
 

@@ -7,54 +7,93 @@ import (
 	"strings"
 
 	"github.com/iwvelando/finance-forecast/internal/forecast"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 )
 
-// PrettyFormat outputs a human-readable rather than machine-readable table.
+// PrettyFormat formats the forecast results in a human-readable format
 func PrettyFormat(results []forecast.Forecast) {
-	p := message.NewPrinter(language.English)
-	for _, result := range results {
-		fmt.Printf("--- Results for scenario %s ---\n", result.Name)
-		fmt.Printf("Date    | Amount        | Notes\n")
-		fmt.Printf("____    | _____________ | _____\n")
-		dates := make([]string, len(result.Data))
-		n := 0
-		for date := range result.Data {
-			dates[n] = date
-			n++
+	if len(results) == 0 {
+		fmt.Println("No forecast results to display.")
+		return
+	}
+
+	// Create a map to collect all dates across scenarios
+	allDates := make(map[string]bool)
+	for _, scenario := range results {
+		for date := range scenario.Data {
+			allDates[date] = true
 		}
-		sort.Strings(dates)
+	}
+
+	// Convert to sorted slice
+	var dates []string
+	for date := range allDates {
+		dates = append(dates, date)
+	}
+	sort.Strings(dates)
+
+	// Format output
+	for _, scenario := range results {
+		fmt.Printf("\n=== %s ===\n", scenario.Name)
 		for _, date := range dates {
-			_, _ = p.Printf("%s | $%.2f | %s\n", date, result.Data[date], strings.Join(result.Notes[date], ","))
-		}
-		if len(results) > 1 {
-			fmt.Printf("\n")
+			if balance, exists := scenario.Data[date]; exists {
+				fmt.Printf("%s | $%.2f", date, balance)
+				if notes, hasNotes := scenario.Notes[date]; hasNotes && len(notes) > 0 {
+					fmt.Printf(" | %s", strings.Join(notes, ", "))
+				}
+				fmt.Println()
+			}
 		}
 	}
 }
 
 // CsvFormat outputs in comma-separated value format.
 func CsvFormat(results []forecast.Forecast) {
-	// All results have the same timeline, so grab the dates from the first
-	dates := make([]string, len(results[0].Data))
-	n := 0
-	for date := range results[0].Data {
-		dates[n] = date
-		n++
+	if len(results) == 0 {
+		fmt.Println("Date,Scenario,Amount,Notes")
+		return
+	}
+
+	// Create a map to collect all dates across scenarios
+	allDates := make(map[string]bool)
+	for _, scenario := range results {
+		for date := range scenario.Data {
+			allDates[date] = true
+		}
+	}
+
+	// Convert to sorted slice
+	var dates []string
+	for date := range allDates {
+		dates = append(dates, date)
 	}
 	sort.Strings(dates)
-	fmt.Printf(`"date"`)
-	for _, result := range results {
-		fmt.Printf(`,"amount (%s)","notes (%s)"`, result.Name, result.Name)
+
+	// Build header with scenario names
+	header := []string{"\"date\""}
+	for _, scenario := range results {
+		header = append(header, fmt.Sprintf("\"amount (%s)\"", scenario.Name))
+		header = append(header, fmt.Sprintf("\"notes (%s)\"", scenario.Name))
 	}
-	fmt.Printf("\n")
+	fmt.Println(strings.Join(header, ","))
+
+	// Output data rows
 	for _, date := range dates {
-		fmt.Printf(`"%s"`, date)
-		for _, result := range results {
-			fmt.Printf(`,"%.2f"`, result.Data[date])
-			fmt.Printf(`,"%s"`, strings.Join(result.Notes[date], ","))
+		row := []string{fmt.Sprintf("\"%s\"", date)}
+		for _, scenario := range results {
+			if balance, exists := scenario.Data[date]; exists {
+				row = append(row, fmt.Sprintf("\"%.2f\"", balance))
+
+				// Add notes
+				if notes, hasNotes := scenario.Notes[date]; hasNotes && len(notes) > 0 {
+					row = append(row, fmt.Sprintf("\"%s\"", strings.Join(notes, ",")))
+				} else {
+					row = append(row, "\"\"")
+				}
+			} else {
+				row = append(row, "\"\"") // Empty amount
+				row = append(row, "\"\"") // Empty notes
+			}
 		}
-		fmt.Printf("\n")
+		fmt.Println(strings.Join(row, ","))
 	}
 }

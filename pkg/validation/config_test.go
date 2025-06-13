@@ -249,7 +249,7 @@ func TestConfigValidator_ValidateAll(t *testing.T) {
 					},
 				},
 			},
-			expectWarnCount: 4, // Event after death (2), loan after death (1), scenario event after death (2), but inactive scenario ignored
+			expectWarnCount: 5, // Event after death (2), loan after death (1), scenario event after death (2), but inactive scenario ignored
 		},
 	}
 

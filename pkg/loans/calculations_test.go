@@ -125,8 +125,8 @@ func TestCheckEarlyPayoffThreshold(t *testing.T) {
 
 	// Create mock amortization schedule
 	schedule := map[string]Payment{
-		"2025-05": {RemainingPrincipal: 45000},
-		"2025-06": {RemainingPrincipal: 44000},
+		"2025-05": {RemainingPrincipal: 44000}, // Previous month to 2025-06
+		"2025-06": {RemainingPrincipal: 43000},
 	}
 
 	tests := []struct {

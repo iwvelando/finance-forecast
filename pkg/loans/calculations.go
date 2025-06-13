@@ -376,42 +376,23 @@ func (g *AmortizationScheduleGenerator) CalculateExtraPrincipalWithLogging(extra
 	return amount
 }
 
-// CalculateExtraPrincipalWithOverpaymentPrevention calculates extra principal while preventing overpayment
-// This is the advanced version that handles complex scenarios where extra principal might exceed remaining balance
-func CalculateExtraPrincipalWithOverpaymentPrevention(logger *zap.Logger, extraPrincipalPayments []Event,
-	date string, monthlyPayment, remainingPrincipal, interestRate float64, loanName string) (float64, error) {
+// CalculateExtraPrincipalWithOverpaymentPrevention calculates extra principal with overpayment prevention
+func CalculateExtraPrincipalWithOverpaymentPrevention(
+	logger *zap.Logger, events []Event, date string, monthlyPayment, currentBalance, interestRate float64, loanName string,
+) (float64, error) {
+	totalExtra := CalculateExtraPrincipal(events, date)
 
-	baseExtraPrincipal := CalculateExtraPrincipal(extraPrincipalPayments, date)
-	if baseExtraPrincipal == 0 {
-		return 0, nil
+	// Prevent overpayment by capping extra payment to current balance
+	if totalExtra > currentBalance {
+		logger.Debug("Capping extra principal payment to prevent overpayment",
+			zap.String("date", date),
+			zap.String("loan", loanName),
+			zap.Float64("requested", totalExtra),
+			zap.Float64("capped_to_balance", currentBalance))
+		return currentBalance, nil
 	}
 
-	// Calculate what the principal payment would be without extra principal
-	interestPayment := CalculateInterestPayment(remainingPrincipal, interestRate)
-	basePrincipalPayment := monthlyPayment - interestPayment
-	totalPrincipalPayment := basePrincipalPayment + baseExtraPrincipal
-
-	// Check for overpayment scenarios
-	if mathutil.Round(totalPrincipalPayment-remainingPrincipal) < baseExtraPrincipal &&
-		mathutil.Round(totalPrincipalPayment-remainingPrincipal) > 0 {
-		// We could pay off the loan by paying a portion, but not all of, the extra principal
-		adjustedExtraPrincipal := totalPrincipalPayment - remainingPrincipal
-		logger.Debug(fmt.Sprintf("%s: adjusting extraPrincipal to %.2f to prevent overpayment for loan %s",
-			date, adjustedExtraPrincipal, loanName),
-			zap.String("op", "loans.CalculateExtraPrincipalWithOverpaymentPrevention"),
-		)
-		return adjustedExtraPrincipal, nil
-	} else if mathutil.Round(totalPrincipalPayment-remainingPrincipal) > baseExtraPrincipal {
-		// In this case we should not be paying any extra principal; the payment is actually liable to be reduced
-		adjustedExtraPrincipal := remainingPrincipal - basePrincipalPayment
-		logger.Debug(fmt.Sprintf("%s: adjusting extraPrincipal to %.2f to prevent overpayment for loan %s",
-			date, adjustedExtraPrincipal, loanName),
-			zap.String("op", "loans.CalculateExtraPrincipalWithOverpaymentPrevention"),
-		)
-		return adjustedExtraPrincipal, nil
-	}
-
-	return baseExtraPrincipal, nil
+	return totalExtra, nil
 }
 
 // calculateExtraPrincipal was replaced with direct use of CalculateExtraPrincipal

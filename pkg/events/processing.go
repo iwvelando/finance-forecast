@@ -35,49 +35,62 @@ func (p *Processor) ParseDateLists(events []*Event, deathDate string) error {
 	return nil
 }
 
-// FormDateList handles the date to time.Time parsing for one given event.
-func (event *Event) FormDateList(deathDate string) error {
-	dateList := make([]time.Time, 1)
-	var startDateT time.Time
-	var err error
-
-	// Unspecified startDate goes to the current time.
-	if event.StartDate == "" {
-		startDateT, err = time.Parse(datetime.DateTimeLayout, time.Now().Format(datetime.DateTimeLayout))
-		if err != nil {
-			return err
-		}
-	} else {
-		startDateT, err = time.Parse(datetime.DateTimeLayout, event.StartDate)
-		if err != nil {
-			return err
-		}
+// FormDateList generates a list of dates for this event based on its frequency
+// It takes only deathDate as parameter and uses current time internally
+func (e *Event) FormDateList(deathDate string) error {
+	// Use current time if start date is not specified
+	currentTime := time.Now().Format("2006-01")
+	startDate := e.StartDate
+	if startDate == "" {
+		startDate = currentTime
 	}
 
-	// Unspecified endDate goes to the deathDate.
-	if event.EndDate == "" {
-		event.EndDate = deathDate
-	}
-	endDateT, err := time.Parse(datetime.DateTimeLayout, event.EndDate)
-	if err != nil {
-		return err
+	// Set default end date to death date if not specified
+	endDate := e.EndDate
+	if endDate == "" {
+		endDate = deathDate
+		e.EndDate = deathDate // Update the event's EndDate
 	}
 
-	// Identify all dates where an event takes place and aggregate them in
-	// dateList.
-	dateList[0] = startDateT
+	// Check if event extends beyond death date and modify end date
+	if beforeDeath, err := datetime.DateBeforeDate(deathDate, endDate); err == nil && beforeDeath {
+		// Event extends beyond death date, truncate it
+		endDate = deathDate
+		e.EndDate = deathDate // Update the event's EndDate
+	}
+
+	// Generate date list based on frequency
+	var dates []time.Time
+	current := startDate
+
 	for {
-		nextDate := dateList[len(dateList)-1].AddDate(0, event.Frequency, 0)
-		if nextDate.Equal(endDateT) {
-			dateList = append(dateList, nextDate)
+		// Parse current date
+		currentTime, err := time.Parse("2006-01", current)
+		if err != nil {
+			return err
+		}
+
+		// Parse end date for comparison
+		endTime, err := time.Parse("2006-01", endDate)
+		if err != nil {
+			return err
+		}
+
+		// Check if current date is beyond end date
+		if currentTime.After(endTime) {
 			break
-		} else if nextDate.After(endDateT) {
-			break
+		}
+
+		dates = append(dates, currentTime)
+
+		// Move to next date based on frequency
+		if nextDate, err := datetime.OffsetDate(current, "2006-01", e.Frequency); err != nil {
+			return err
 		} else {
-			dateList = append(dateList, nextDate)
+			current = nextDate
 		}
 	}
-	event.DateList = dateList
 
+	e.DateList = dates
 	return nil
 }

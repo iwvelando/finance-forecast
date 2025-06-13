@@ -15,7 +15,7 @@ func Round(val float64) float64 {
 
 // IsZero checks if a value is effectively zero (within tolerance)
 func IsZero(val float64) bool {
-	return math.Abs(val) < constants.CurrencyTolerance
+	return math.Abs(val) <= constants.CurrencyTolerance
 }
 
 // IsPositive checks if a value is positive (greater than tolerance)
