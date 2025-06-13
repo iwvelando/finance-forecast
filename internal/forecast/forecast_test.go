@@ -5,12 +5,15 @@ import (
 	"time"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
+	"github.com/iwvelando/finance-forecast/pkg/adapters"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
+	"github.com/iwvelando/finance-forecast/pkg/finance"
 	"go.uber.org/zap"
 )
 
-func TestHandleEvents(t *testing.T) {
+func TestEventProcessing(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
+	forecastEngine := finance.NewForecastEngine(logger)
 
 	// Create test events with date lists
 	events := []config.Event{
@@ -59,19 +62,23 @@ func TestHandleEvents(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			amount, err := HandleEvents(logger, tt.date, events, config.DateTimeLayout)
+			// Convert events using the adapter
+			financeEvents := adapters.EventsToFinanceEvents(events)
+
+			amount, err := forecastEngine.ProcessMonthlyChanges(tt.date, financeEvents, nil, config.DateTimeLayout)
 			if err != nil {
-				t.Errorf("HandleEvents() error = %v", err)
+				t.Errorf("ProcessMonthlyChanges() error = %v", err)
 			}
 			if amount != tt.expected {
-				t.Errorf("HandleEvents() = %.2f, expected %.2f", amount, tt.expected)
+				t.Errorf("ProcessMonthlyChanges() = %.2f, expected %.2f", amount, tt.expected)
 			}
 		})
 	}
 }
 
-func TestHandleLoans(t *testing.T) {
+func TestLoanProcessing(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
+	forecastEngine := finance.NewForecastEngine(logger)
 
 	// Create test loans with amortization schedules
 	loans := []config.Loan{
@@ -114,9 +121,15 @@ func TestHandleLoans(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			amount := HandleLoans(logger, tt.date, loans)
+			// Convert loans using the adapter
+			financeLoans := adapters.LoansToFinanceLoans(loans)
+
+			amount, err := forecastEngine.ProcessMonthlyChanges(tt.date, nil, financeLoans, config.DateTimeLayout)
+			if err != nil {
+				t.Errorf("ProcessMonthlyChanges() error = %v", err)
+			}
 			if amount != tt.expected {
-				t.Errorf("HandleLoans() = %.2f, expected %.2f", amount, tt.expected)
+				t.Errorf("ProcessMonthlyChanges() = %.2f, expected %.2f", amount, tt.expected)
 			}
 		})
 	}

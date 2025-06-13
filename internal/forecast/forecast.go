@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
+	"github.com/iwvelando/finance-forecast/pkg/adapters"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"github.com/iwvelando/finance-forecast/pkg/finance"
 	"go.uber.org/zap"
@@ -38,21 +39,38 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 		result.Notes = make(map[string][]string)
 		result.Data[startDate] = conf.Common.StartingValue
 		previousDate := startDate
+		// Create a forecast engine to process monthly changes
+		forecastEngine := finance.NewForecastEngine(logger)
+
 		for {
 			date, err := datetime.OffsetDate(previousDate, config.DateTimeLayout, 1)
 			if err != nil {
 				return results, err
 			}
-			eventsAmount, err := HandleEvents(logger, date, scenario.Events, config.DateTimeLayout)
+
+			// Convert events and loans using adapters
+			scenarioEvents := adapters.EventsToFinanceEvents(scenario.Events)
+			commonEvents := adapters.EventsToFinanceEvents(conf.Common.Events)
+			scenarioLoans := adapters.LoansToFinanceLoans(scenario.Loans)
+			commonLoans := adapters.LoansToFinanceLoans(conf.Common.Loans)
+
+			// Process scenario events
+			scenarioChanges, err := forecastEngine.ProcessMonthlyChanges(date, scenarioEvents, nil, config.DateTimeLayout)
 			if err != nil {
 				return results, err
 			}
-			commonEventsAmount, err := HandleEvents(logger, date, conf.Common.Events, config.DateTimeLayout)
+
+			// Process common events
+			commonChanges, err := forecastEngine.ProcessMonthlyChanges(date, commonEvents, nil, config.DateTimeLayout)
 			if err != nil {
 				return results, err
 			}
+
+			// Check for early payoff thresholds
+			projectedBalance := result.Data[previousDate] + scenarioChanges + commonChanges
+
 			for j := range conf.Scenarios[i].Loans {
-				note, err := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, result.Data[previousDate]+eventsAmount+commonEventsAmount)
+				note, err := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, projectedBalance)
 				if err != nil {
 					return results, err
 				}
@@ -60,8 +78,9 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 					result.Notes[date] = append(result.Notes[date], note)
 				}
 			}
+
 			for j := range conf.Common.Loans {
-				note, err := conf.Common.Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, result.Data[previousDate]+eventsAmount+commonEventsAmount)
+				note, err := conf.Common.Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, projectedBalance)
 				if err != nil {
 					return results, err
 				}
@@ -69,9 +88,20 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 					result.Notes[date] = append(result.Notes[date], note)
 				}
 			}
-			loansAmount := HandleLoans(logger, date, scenario.Loans)
-			commonLoansAmount := HandleLoans(logger, date, conf.Common.Loans)
-			result.Data[date] = result.Data[previousDate] + eventsAmount + commonEventsAmount + loansAmount + commonLoansAmount
+
+			// Process loan payments
+			scenarioLoansChanges, err := forecastEngine.ProcessMonthlyChanges(date, nil, scenarioLoans, config.DateTimeLayout)
+			if err != nil {
+				return results, err
+			}
+
+			commonLoansChanges, err := forecastEngine.ProcessMonthlyChanges(date, nil, commonLoans, config.DateTimeLayout)
+			if err != nil {
+				return results, err
+			}
+
+			// Update the balance
+			result.Data[date] = result.Data[previousDate] + scenarioChanges + commonChanges + scenarioLoansChanges + commonLoansChanges
 			if date == conf.Common.DeathDate {
 				break
 			}
@@ -83,47 +113,6 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 	return results, nil
 }
 
-// HandleEvents sums all amounts for Events that occur on the input date.
-func HandleEvents(logger *zap.Logger, date string, events []config.Event, layout string) (float64, error) {
-	// Convert config events to finance event interface
-	var financeEvents []finance.EventWithDates
-	for _, event := range events {
-		financeEvents = append(financeEvents, configEventWrapper{event})
-	}
-
-	processor := finance.NewEventProcessor(logger)
-	return processor.ProcessEventsForDate(date, financeEvents, layout)
-}
-
-// configEventWrapper wraps config.Event to implement finance.EventWithDates
-type configEventWrapper struct {
-	event config.Event
-}
-
-func (w configEventWrapper) GetName() string {
-	return w.event.Name
-}
-
-func (w configEventWrapper) GetAmount() float64 {
-	return w.event.Amount
-}
-
-func (w configEventWrapper) GetDateList() []time.Time {
-	return w.event.DateList
-}
-
-// HandleLoans identifies any loan-based financial events that occur on the
-// input date.
-func HandleLoans(logger *zap.Logger, date string, loans []config.Loan) float64 {
-	amount := 0.0
-	for _, loan := range loans {
-		if payment, present := loan.AmortizationSchedule[date]; present {
-			logger.Debug(fmt.Sprintf("%s: loan %s is active for amount %.2f", date, loan.Name, payment.Payment),
-				zap.String("op", "forecast.HandleLoans"),
-			)
-			amount -= payment.Payment
-			continue
-		}
-	}
-	return amount
-}
+// Note: HandleEvents and HandleLoans functions have been removed in favor of
+// using the finance.ForecastEngine directly for better code organization
+// and leveraging existing pkg utilities

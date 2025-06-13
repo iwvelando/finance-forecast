@@ -8,6 +8,7 @@ import (
 
 	"github.com/iwvelando/finance-forecast/pkg/configprocessor"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
+	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"github.com/spf13/viper"
 )
 
@@ -112,6 +113,7 @@ func (conf *Configuration) ParseDateLists() error {
 }
 
 // FormDateList handles the date to time.Time parsing for one given event.
+// This utilizes the datetime package for parsing and date manipulation.
 func (event *Event) FormDateList(conf Configuration) error {
 	dateList := make([]time.Time, 1)
 	var startDateT time.Time
@@ -119,10 +121,8 @@ func (event *Event) FormDateList(conf Configuration) error {
 
 	// Unspecified startDate goes to the current time.
 	if event.StartDate == "" {
-		startDateT, err = time.Parse(DateTimeLayout, time.Now().Format(DateTimeLayout))
-		if err != nil {
-			return err
-		}
+		// Use datetime package for consistent date handling
+		startDateT = datetime.MustParseTime(DateTimeLayout, time.Now().Format(DateTimeLayout))
 	} else {
 		startDateT, err = time.Parse(DateTimeLayout, event.StartDate)
 		if err != nil {
@@ -139,11 +139,14 @@ func (event *Event) FormDateList(conf Configuration) error {
 		return err
 	}
 
-	// Identify all dates where an event takes place and aggregate them in
-	// dateList.
+	// Identify all dates where an event takes place and aggregate them in dateList.
 	dateList[0] = startDateT
+
+	// Using datetime pattern to generate sequence of dates
 	for {
+		// Calculate next event date based on frequency
 		nextDate := dateList[len(dateList)-1].AddDate(0, event.Frequency, 0)
+
 		if nextDate.Equal(endDateT) {
 			dateList = append(dateList, nextDate)
 			break
@@ -153,8 +156,8 @@ func (event *Event) FormDateList(conf Configuration) error {
 			dateList = append(dateList, nextDate)
 		}
 	}
-	event.DateList = dateList
 
+	event.DateList = dateList
 	return nil
 }
 
