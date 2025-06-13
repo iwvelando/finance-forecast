@@ -261,17 +261,24 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 
 // ExtraPrincipal returns an extra principal payment, if present, or 0
 func (loan *Loan) ExtraPrincipal(logger *zap.Logger, date string) (float64, error) {
-	amount := 0.00
-
+	// Convert Event slice to loans.Event slice for the pkg/loans function
+	var loanEvents []loans.Event
 	for _, event := range loan.ExtraPrincipalPayments {
+		var dateList []string
 		for _, eventDate := range event.DateList {
-			if eventDate.Format(datetime.DateTimeLayout) == date {
-				amount += event.Amount
-			}
+			dateList = append(dateList, eventDate.Format(datetime.DateTimeLayout))
 		}
+		loanEvents = append(loanEvents, loans.Event{
+			Name:      event.Name,
+			Amount:    event.Amount,
+			StartDate: event.StartDate,
+			EndDate:   event.EndDate,
+			Frequency: event.Frequency,
+			DateList:  dateList,
+		})
 	}
 
-	return amount, nil
+	return loans.CalculateExtraPrincipal(loanEvents, date), nil
 }
 
 // CheckEarlyPayoffThreshold checks for whether or not it is time to payoff a

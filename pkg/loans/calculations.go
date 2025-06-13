@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"github.com/iwvelando/finance-forecast/pkg/mathutil"
 	"go.uber.org/zap"
@@ -26,7 +27,7 @@ func CalculateMonthlyPayment(principal, downPayment, annualInterestRate float64,
 		return (principal - downPayment) / float64(termMonths)
 	}
 
-	periodicInterestRate := annualInterestRate / (100.0 * 12.0)
+	periodicInterestRate := annualInterestRate / (constants.PercentageMultiplier * constants.MonthsPerYear)
 	power := math.Pow((1.00 + periodicInterestRate), float64(termMonths))
 	discountFactor := (power - 1.00) / power
 	return (principal - downPayment) * periodicInterestRate / discountFactor
@@ -34,7 +35,7 @@ func CalculateMonthlyPayment(principal, downPayment, annualInterestRate float64,
 
 // CalculateInterestPayment calculates the interest portion of a payment.
 func CalculateInterestPayment(remainingPrincipal, annualInterestRate float64) float64 {
-	return remainingPrincipal * annualInterestRate / (100.0 * 12.0)
+	return remainingPrincipal * annualInterestRate / (constants.PercentageMultiplier * constants.MonthsPerYear)
 }
 
 // CheckEarlyPayoffThreshold checks for whether or not it is time to payoff a
@@ -63,6 +64,35 @@ func CheckEarlyPayoffThreshold(logger *zap.Logger, loanName, startDate, currentM
 		}
 	}
 	return note, nil
+}
+
+// Event represents an extra principal payment event
+type Event struct {
+	Name      string
+	Amount    float64
+	StartDate string
+	EndDate   string
+	Frequency int      // months
+	DateList  []string // dates in YYYY-MM format
+}
+
+// LoanConfig represents loan configuration parameters
+type LoanConfig struct {
+	Name                    string
+	StartDate               string
+	Principal               float64
+	InterestRate            float64
+	Term                    int
+	DownPayment             float64
+	Escrow                  float64
+	MortgageInsurance       float64
+	MortgageInsuranceCutoff float64
+	EarlyPayoffThreshold    float64
+	EarlyPayoffDate         string
+	SellProperty            bool
+	SellPrice               float64
+	SellCostsNet            float64
+	ExtraPrincipalPayments  []Event
 }
 
 // AmortizationScheduleGenerator provides utilities for generating loan amortization schedules
@@ -127,27 +157,33 @@ func (g *AmortizationScheduleGenerator) GenerateSchedule(loan *LoanConfig, death
 	return schedule, nil
 }
 
-// LoanConfig represents loan configuration parameters
-type LoanConfig struct {
-	Name                    string
-	StartDate               string
-	Principal               float64
-	InterestRate            float64
-	Term                    int
-	DownPayment             float64
-	Escrow                  float64
-	MortgageInsurance       float64
-	MortgageInsuranceCutoff float64
-	EarlyPayoffThreshold    float64
-	EarlyPayoffDate         string
-	SellProperty            bool
-	SellPrice               float64
-	SellCostsNet            float64
+// CalculateExtraPrincipal calculates the total extra principal payment for a given date
+func CalculateExtraPrincipal(extraPrincipalPayments []Event, date string) float64 {
+	amount := 0.00
+
+	for _, event := range extraPrincipalPayments {
+		for _, eventDate := range event.DateList {
+			if eventDate == date {
+				amount += event.Amount
+			}
+		}
+	}
+
+	return amount
 }
 
 func (g *AmortizationScheduleGenerator) calculateExtraPrincipal(loan *LoanConfig, date string) float64 {
-	// Simplified implementation - in real implementation this would calculate from extra principal payments
-	return 0.0
+	amount := 0.00
+
+	for _, event := range loan.ExtraPrincipalPayments {
+		for _, eventDate := range event.DateList {
+			if eventDate == date {
+				amount += event.Amount
+			}
+		}
+	}
+
+	return amount
 }
 
 func (g *AmortizationScheduleGenerator) generateMonthlyPayment(loan *LoanConfig, schedule map[string]Payment,
@@ -179,12 +215,10 @@ func (g *AmortizationScheduleGenerator) generateMonthlyPayment(loan *LoanConfig,
 	payment.Payment = monthlyPayment + loan.Escrow + extraPrincipal
 	payment.Interest = CalculateInterestPayment(previousPayment.RemainingPrincipal, loan.InterestRate)
 	payment.Principal = monthlyPayment - payment.Interest + extraPrincipal
-	payment.RemainingPrincipal = previousPayment.RemainingPrincipal - payment.Principal
-
-	// Handle mortgage insurance
+	payment.RemainingPrincipal = previousPayment.RemainingPrincipal - payment.Principal // Handle mortgage insurance
 	if loan.MortgageInsuranceCutoff > 0 {
 		loanToValue := payment.RemainingPrincipal / (loan.Principal - loan.DownPayment)
-		if loanToValue*100 > loan.MortgageInsuranceCutoff {
+		if loanToValue*constants.PercentageMultiplier > loan.MortgageInsuranceCutoff {
 			payment.Payment += loan.MortgageInsurance
 		}
 	}

@@ -15,17 +15,17 @@ func Round(val float64) float64 {
 
 // IsZero checks if a value is effectively zero (within tolerance)
 func IsZero(val float64) bool {
-	return math.Abs(val) < 0.01
+	return math.Abs(val) < constants.CurrencyTolerance
 }
 
 // IsPositive checks if a value is positive (greater than tolerance)
 func IsPositive(val float64) bool {
-	return val > 0.01
+	return val > constants.CurrencyTolerance
 }
 
 // IsNegative checks if a value is negative (less than negative tolerance)
 func IsNegative(val float64) bool {
-	return val < -0.01
+	return val < -constants.CurrencyTolerance
 }
 
 // WithinTolerance checks if two values are within a specified tolerance
@@ -59,5 +59,5 @@ func CalculatePercentage(value, total float64) float64 {
 
 // ApplyPercentage applies a percentage to a value
 func ApplyPercentage(value, percentage float64) float64 {
-	return value * (percentage / 100)
+	return value * (percentage / constants.PercentageMultiplier)
 }

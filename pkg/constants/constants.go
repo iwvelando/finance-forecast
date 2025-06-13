@@ -48,4 +48,10 @@ const (
 
 	// DefaultMortgageInsuranceCutoff is the default LTV cutoff for mortgage insurance
 	DefaultMortgageInsuranceCutoff = 78.0
+
+	// CurrencyTolerance is the tolerance for currency comparisons (1 cent)
+	CurrencyTolerance = 0.01
+
+	// PercentageMultiplier is used for percentage conversions
+	PercentageMultiplier = 100.0
 )
