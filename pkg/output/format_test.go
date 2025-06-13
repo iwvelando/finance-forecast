@@ -1,0 +1,424 @@
+package output
+
+import (
+	"bytes"
+	"io"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/iwvelando/finance-forecast/internal/forecast"
+)
+
+func TestPrettyFormat(t *testing.T) {
+	// Create test data
+	results := []forecast.Forecast{
+		{
+			Name: "Test Scenario 1",
+			Data: map[string]float64{
+				"2025-01": 1000.00,
+				"2025-02": 1500.50,
+				"2025-03": 2000.75,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Initial amount"},
+				"2025-02": {"Income received"},
+				"2025-03": {"Bonus payment"},
+			},
+		},
+		{
+			Name: "Test Scenario 2",
+			Data: map[string]float64{
+				"2025-01": 900.00,
+				"2025-02": 1200.25,
+				"2025-03": 1800.00,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Conservative start"},
+				"2025-02": {"Regular income"},
+				"2025-03": {},
+			},
+		},
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Call PrettyFormat
+	PrettyFormat(results)
+
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	// Read captured output
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	// Verify output contains expected elements
+	expectedElements := []string{
+		"Test Scenario 1",
+		"Test Scenario 2",
+		"Date    | Amount        | Notes",
+		"2025-01 | $1000.00",
+		"2025-02 | $1500.50",
+		"2025-03 | $2000.75",
+		"2025-01 | $900.00",
+		"2025-02 | $1200.25",
+		"2025-03 | $1800.00",
+		"Initial amount",
+		"Income received",
+		"Conservative start",
+	}
+
+	for _, element := range expectedElements {
+		if !strings.Contains(output, element) {
+			t.Errorf("PrettyFormat output missing expected element: %s", element)
+		}
+	}
+
+	// Verify dates are sorted (2025-01 should come before 2025-02)
+	idx01 := strings.Index(output, "2025-01")
+	idx02 := strings.Index(output, "2025-02")
+	if idx01 > idx02 && idx01 != -1 && idx02 != -1 {
+		t.Errorf("PrettyFormat dates not properly sorted")
+	}
+}
+
+func TestPrettyFormatSingleScenario(t *testing.T) {
+	// Test with single scenario
+	results := []forecast.Forecast{
+		{
+			Name: "Single Scenario",
+			Data: map[string]float64{
+				"2025-01": 1000.00,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Single note"},
+			},
+		},
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	PrettyFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	// Should contain scenario name and data
+	if !strings.Contains(output, "Single Scenario") {
+		t.Errorf("PrettyFormat missing scenario name")
+	}
+	if !strings.Contains(output, "$1000.00") {
+		t.Errorf("PrettyFormat missing amount")
+	}
+	if !strings.Contains(output, "Single note") {
+		t.Errorf("PrettyFormat missing note")
+	}
+}
+
+func TestPrettyFormatEmptyResults(t *testing.T) {
+	// Test with empty results
+	results := []forecast.Forecast{}
+
+	// Shouldn't crash
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("PrettyFormat panicked with empty results: %v", r)
+		}
+	}()
+
+	// Capture stdout to prevent output during test
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	PrettyFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	// Just ensure it doesn't crash
+}
+
+func TestCsvFormat(t *testing.T) {
+	// Create test data
+	results := []forecast.Forecast{
+		{
+			Name: "Scenario A",
+			Data: map[string]float64{
+				"2025-01": 1000.00,
+				"2025-02": 1500.50,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Note A1"},
+				"2025-02": {"Note A2", "Additional note"},
+			},
+		},
+		{
+			Name: "Scenario B",
+			Data: map[string]float64{
+				"2025-01": 900.00,
+				"2025-02": 1200.25,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Note B1"},
+				"2025-02": {},
+			},
+		},
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	CsvFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	// Split into lines
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+
+	// Should have header + data lines
+	if len(lines) < 3 {
+		t.Errorf("CsvFormat should produce at least 3 lines (header + 2 data), got %d", len(lines))
+	}
+
+	// Check header
+	header := lines[0]
+	expectedHeaderElements := []string{
+		`"date"`,
+		`"amount (Scenario A)"`,
+		`"notes (Scenario A)"`,
+		`"amount (Scenario B)"`,
+		`"notes (Scenario B)"`,
+	}
+
+	for _, element := range expectedHeaderElements {
+		if !strings.Contains(header, element) {
+			t.Errorf("CsvFormat header missing: %s", element)
+		}
+	}
+
+	// Check data lines contain expected values
+	dataContent := strings.Join(lines[1:], "\n")
+	expectedDataElements := []string{
+		`"2025-01"`,
+		`"2025-02"`,
+		`"1000.00"`,
+		`"1500.50"`,
+		`"900.00"`,
+		`"1200.25"`,
+		`"Note A1"`,
+		`"Note A2,Additional note"`,
+		`"Note B1"`,
+	}
+
+	for _, element := range expectedDataElements {
+		if !strings.Contains(dataContent, element) {
+			t.Errorf("CsvFormat data missing: %s", element)
+		}
+	}
+}
+
+func TestCsvFormatSingleScenario(t *testing.T) {
+	// Test CSV with single scenario
+	results := []forecast.Forecast{
+		{
+			Name: "Only Scenario",
+			Data: map[string]float64{
+				"2025-01": 1000.00,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Only note"},
+			},
+		},
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	CsvFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+
+	// Should have header + 1 data line
+	if len(lines) != 2 {
+		t.Errorf("CsvFormat with single scenario should produce 2 lines, got %d", len(lines))
+	}
+
+	// Check header format
+	if !strings.Contains(lines[0], `"date"`) {
+		t.Errorf("CsvFormat header missing date column")
+	}
+	if !strings.Contains(lines[0], `"amount (Only Scenario)"`) {
+		t.Errorf("CsvFormat header missing amount column")
+	}
+	if !strings.Contains(lines[0], `"notes (Only Scenario)"`) {
+		t.Errorf("CsvFormat header missing notes column")
+	}
+}
+
+func TestCsvFormatEmptyResults(t *testing.T) {
+	// Test with empty results - should not crash
+	results := []forecast.Forecast{}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("CsvFormat panicked with empty results: %v", r)
+		}
+	}()
+
+	// Capture stdout to prevent output during test
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// This might panic due to accessing results[0], but let's test
+	CsvFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+}
+
+func TestCsvFormatNotesHandling(t *testing.T) {
+	// Test various note scenarios
+	results := []forecast.Forecast{
+		{
+			Name: "Notes Test",
+			Data: map[string]float64{
+				"2025-01": 1000.00,
+				"2025-02": 2000.00,
+				"2025-03": 3000.00,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Single note"},
+				"2025-02": {"Multiple", "notes", "here"},
+				"2025-03": {}, // Empty notes
+			},
+		},
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	CsvFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	// Check that multiple notes are joined with commas
+	if !strings.Contains(output, `"Multiple,notes,here"`) {
+		t.Errorf("CsvFormat should join multiple notes with commas")
+	}
+
+	// Check that single note is handled correctly
+	if !strings.Contains(output, `"Single note"`) {
+		t.Errorf("CsvFormat should handle single notes correctly")
+	}
+
+	// Check that empty notes result in empty quoted string
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "2025-03") {
+			if !strings.Contains(line, `""`) {
+				t.Errorf("CsvFormat should have empty quoted string for no notes")
+			}
+			break
+		}
+	}
+}
+
+func TestFormatDateSorting(t *testing.T) {
+	// Test that dates are properly sorted in output
+	results := []forecast.Forecast{
+		{
+			Name: "Date Sort Test",
+			Data: map[string]float64{
+				"2025-12": 1000.00,
+				"2025-01": 2000.00,
+				"2025-06": 3000.00,
+			},
+			Notes: map[string][]string{
+				"2025-12": {"December"},
+				"2025-01": {"January"},
+				"2025-06": {"June"},
+			},
+		},
+	}
+
+	// Test both formats
+	formats := []struct {
+		name string
+		fn   func([]forecast.Forecast)
+	}{
+		{"PrettyFormat", PrettyFormat},
+		{"CsvFormat", CsvFormat},
+	}
+
+	for _, format := range formats {
+		t.Run(format.name, func(t *testing.T) {
+			// Capture stdout
+			oldStdout := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			format.fn(results)
+
+			_ = w.Close()
+			os.Stdout = oldStdout
+
+			var buf bytes.Buffer
+			_, _ = io.Copy(&buf, r)
+			output := buf.String()
+
+			// Find positions of dates in output
+			pos01 := strings.Index(output, "2025-01")
+			pos06 := strings.Index(output, "2025-06")
+			pos12 := strings.Index(output, "2025-12")
+
+			// All should be found
+			if pos01 == -1 || pos06 == -1 || pos12 == -1 {
+				t.Errorf("%s missing some dates in output", format.name)
+				return
+			}
+
+			// Should be in chronological order
+			if pos01 > pos06 || pos06 > pos12 {
+				t.Errorf("%s dates not in chronological order", format.name)
+			}
+		})
+	}
+}
