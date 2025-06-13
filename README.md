@@ -67,3 +67,70 @@ Output:
 * Produce charts of the different scenarios without having to import the CSV output in spreadsheet software
 * A GUI might be interesting?
 
+## Logging Configuration
+
+Finance Forecast supports flexible logging configuration through the config file and command-line overrides.
+
+### Configuration File
+
+Add a `logging` section to your config file:
+
+```yaml
+logging:
+  level: info        # Options: debug, info, warn, error (default: info)
+  format: console    # Options: console (human-readable) or json (structured) (default: json)
+  output_file: forecast.log  # Optional: log to file instead of stdout
+```
+
+### Command Line Override
+
+You can override the log level at runtime:
+
+```bash
+# Override to debug level
+./finance-forecast --log-level debug --config config.yaml
+
+# Override to error level for quiet operation
+./finance-forecast --log-level error --config config.yaml
+```
+
+### Log Levels
+
+- **debug**: Detailed diagnostic information
+- **info**: General operational messages (default)
+- **warn**: Warning messages for potential issues
+- **error**: Error messages for serious problems
+
+### Log Formats
+
+- **console**: Human-readable format for development
+- **json**: Structured JSON format for production/monitoring
+
+### Examples
+
+Debug mode with console output:
+```yaml
+logging:
+  level: debug
+  format: console
+```
+
+Production mode with JSON logging to file:
+```yaml
+logging:
+  level: info
+  format: json
+  output_file: /var/log/finance-forecast.log
+```
+
+### Testing Logging
+
+Use the logging demo utility to test your configuration:
+
+```bash
+go run cmd/logging-demo/main.go --config config.yaml
+go run cmd/logging-demo/main.go --config config.yaml --log-level debug
+```
+
+## Configuration
+

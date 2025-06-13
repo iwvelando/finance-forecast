@@ -56,6 +56,7 @@ help:
 	@echo "  pre-commit           - Run pre-commit checks"
 	@echo "  status               - Show project status"
 	@echo "  check-organization   - Verify project organization"
+	@echo "  validate              - Validate the application with example config"
 
 # Build targets
 .PHONY: build
@@ -242,3 +243,9 @@ status:
 	else \
 		echo "Binary: Not built"; \
 	fi
+
+validate: ## Validate the application with example config
+	go test -run TestValidateApplication -v
+
+run-example: build ## Run with example configuration
+	./finance-forecast --config config.yaml.example

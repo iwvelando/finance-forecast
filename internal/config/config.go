@@ -20,6 +20,14 @@ const DateTimeLayout = constants.DateTimeLayout
 type Configuration struct {
 	Common    Common
 	Scenarios []Scenario
+	Logging   LoggingConfig `yaml:"logging,omitempty"`
+}
+
+// LoggingConfig holds logging configuration options
+type LoggingConfig struct {
+	Level      string `yaml:"level,omitempty"`       // debug, info, warn, error
+	Format     string `yaml:"format,omitempty"`      // json, console
+	OutputFile string `yaml:"output_file,omitempty"` // optional file output
 }
 
 // Common holds the shared parameters, events, and loans between all scenarios.

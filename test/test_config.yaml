@@ -127,3 +127,8 @@ scenarios:
             frequency: 1
             startDate: 2023-06
             endDate: 2023-06
+
+# Logging configuration for tests
+logging:
+  level: info        # Use info level for tests to reduce noise
+  format: json       # Use JSON format for consistent test output

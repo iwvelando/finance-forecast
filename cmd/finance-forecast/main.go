@@ -9,38 +9,91 @@ import (
 	"github.com/iwvelando/finance-forecast/pkg/output"
 	"github.com/iwvelando/finance-forecast/pkg/validation"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-func main() {
+// initializeLogger creates a zap logger based on configuration and CLI override
+func initializeLogger(loggingConfig config.LoggingConfig, logLevelOverride string) (*zap.Logger, error) {
+	// Determine log level (CLI override takes precedence)
+	level := loggingConfig.Level
+	if logLevelOverride != "" {
+		level = logLevelOverride
+	}
+	if level == "" {
+		level = "info" // Default to info level
+	}
 
-	// Initialize logging.
-	logger, err := zap.NewProduction()
+	// Parse log level
+	var zapLevel zapcore.Level
+	switch level {
+	case "debug":
+		zapLevel = zapcore.DebugLevel
+	case "info":
+		zapLevel = zapcore.InfoLevel
+	case "warn", "warning":
+		zapLevel = zapcore.WarnLevel
+	case "error":
+		zapLevel = zapcore.ErrorLevel
+	default:
+		return nil, fmt.Errorf("invalid log level: %s", level)
+	}
+
+	// Determine output format
+	format := loggingConfig.Format
+	if format == "" {
+		format = "json" // Default to JSON for production
+	}
+
+	// Configure encoder
+	var config zap.Config
+	switch format {
+	case "console":
+		config = zap.NewDevelopmentConfig()
+		config.Level = zap.NewAtomicLevelAt(zapLevel)
+	case "json":
+		config = zap.NewProductionConfig()
+		config.Level = zap.NewAtomicLevelAt(zapLevel)
+	default:
+		return nil, fmt.Errorf("invalid log format: %s", format)
+	}
+
+	// Configure output file if specified
+	if loggingConfig.OutputFile != "" {
+		config.OutputPaths = []string{loggingConfig.OutputFile}
+		config.ErrorOutputPaths = []string{loggingConfig.OutputFile}
+	}
+
+	return config.Build()
+}
+
+func main() {
+	// Process command line flags first to get config location
+	configLocation := flag.String("config", "config.yaml", "path to configuration file")
+	outputFormat := flag.String("output-format", "pretty", "type of output: pretty, csv")
+	logLevel := flag.String("log-level", "", "log level override (debug, info, warn, error)")
+	flag.Parse()
+
+	// Load the config file to get logging configuration
+	conf, err := config.LoadConfiguration(*configLocation)
 	if err != nil {
-		fmt.Println("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to initiate logger\"}")
+		fmt.Printf("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to load configuration at %s\", \"error\": \"%v\"}\n", *configLocation, err)
+		panic(err)
+	}
+
+	// Initialize logging based on config and CLI override
+	logger, err := initializeLogger(conf.Logging, *logLevel)
+	if err != nil {
+		fmt.Printf("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to initialize logger\", \"error\": \"%v\"}\n", err)
 		panic(err)
 	}
 	defer func() {
 		_ = logger.Sync()
 	}()
 
-	// Process command line flags.
-	configLocation := flag.String("config", "config.yaml", "path to configuration file")
-	outputFormat := flag.String("output-format", "pretty", "type of output: pretty, csv")
-	flag.Parse()
-
 	err = validation.ValidateOutputFormat(*outputFormat)
 	if err != nil {
 		logger.Fatal(err.Error(),
 			zap.String("op", "main"),
-		)
-	}
-
-	// Load the config file based on path provided via CLI or the default.
-	conf, err := config.LoadConfiguration(*configLocation)
-	if err != nil {
-		logger.Fatal(fmt.Sprintf("failed to load configuration at %s", *configLocation),
-			zap.String("op", "main"),
-			zap.Error(err),
 		)
 	}
 

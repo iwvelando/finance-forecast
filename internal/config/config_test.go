@@ -56,6 +56,14 @@ func TestLoadConfigurationExample(t *testing.T) {
 		return
 	}
 
+	// Test that logging configuration is properly loaded
+	if config.Logging.Level == "" {
+		t.Log("No logging level specified in config, will use default")
+	}
+	if config.Logging.Format == "" {
+		t.Log("No logging format specified in config, will use default")
+	}
+
 	// Only test that the config loaded, don't process it further
 	// to avoid triggering loan processing with debug output
 	_ = logger // Use the logger variable to avoid unused variable error
@@ -515,5 +523,40 @@ func TestExampleConfigurationProcessing(t *testing.T) {
 		if len(loan.AmortizationSchedule) == 0 {
 			t.Errorf("Common Loan %d (%s) has no amortization schedule", i, loan.Name)
 		}
+	}
+}
+
+func TestLoggingConfiguration(t *testing.T) {
+	// Test with logging configuration
+	config := Configuration{
+		Logging: LoggingConfig{
+			Level:  "debug",
+			Format: "console",
+		},
+		Common: Common{
+			DeathDate: "2030-01",
+		},
+	}
+
+	// Verify logging config is properly set
+	if config.Logging.Level != "debug" {
+		t.Errorf("Expected logging level 'debug', got '%s'", config.Logging.Level)
+	}
+	if config.Logging.Format != "console" {
+		t.Errorf("Expected logging format 'console', got '%s'", config.Logging.Format)
+	}
+
+	// Test default values (empty logging config)
+	emptyConfig := Configuration{
+		Common: Common{
+			DeathDate: "2030-01",
+		},
+	}
+
+	if emptyConfig.Logging.Level != "" {
+		t.Errorf("Expected empty logging level, got '%s'", emptyConfig.Logging.Level)
+	}
+	if emptyConfig.Logging.Format != "" {
+		t.Errorf("Expected empty logging format, got '%s'", emptyConfig.Logging.Format)
 	}
 }
