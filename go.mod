@@ -3,7 +3,6 @@ module github.com/iwvelando/finance-forecast
 go 1.13
 
 require (
-	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/spf13/viper v1.12.0
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
