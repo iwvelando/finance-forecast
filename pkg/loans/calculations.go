@@ -172,6 +172,44 @@ func CalculateExtraPrincipal(extraPrincipalPayments []Event, date string) float6
 	return amount
 }
 
+// CalculateExtraPrincipalWithOverpaymentPrevention calculates extra principal while preventing overpayment
+// This is the advanced version that handles complex scenarios where extra principal might exceed remaining balance
+func CalculateExtraPrincipalWithOverpaymentPrevention(logger *zap.Logger, extraPrincipalPayments []Event,
+	date string, monthlyPayment, remainingPrincipal, interestRate float64, loanName string) (float64, error) {
+
+	baseExtraPrincipal := CalculateExtraPrincipal(extraPrincipalPayments, date)
+	if baseExtraPrincipal == 0 {
+		return 0, nil
+	}
+
+	// Calculate what the principal payment would be without extra principal
+	interestPayment := CalculateInterestPayment(remainingPrincipal, interestRate)
+	basePrincipalPayment := monthlyPayment - interestPayment
+	totalPrincipalPayment := basePrincipalPayment + baseExtraPrincipal
+
+	// Check for overpayment scenarios
+	if mathutil.Round(totalPrincipalPayment-remainingPrincipal) < baseExtraPrincipal &&
+		mathutil.Round(totalPrincipalPayment-remainingPrincipal) > 0 {
+		// We could pay off the loan by paying a portion, but not all of, the extra principal
+		adjustedExtraPrincipal := totalPrincipalPayment - remainingPrincipal
+		logger.Debug(fmt.Sprintf("%s: adjusting extraPrincipal to %.2f to prevent overpayment for loan %s",
+			date, adjustedExtraPrincipal, loanName),
+			zap.String("op", "loans.CalculateExtraPrincipalWithOverpaymentPrevention"),
+		)
+		return adjustedExtraPrincipal, nil
+	} else if mathutil.Round(totalPrincipalPayment-remainingPrincipal) > baseExtraPrincipal {
+		// In this case we should not be paying any extra principal; the payment is actually liable to be reduced
+		adjustedExtraPrincipal := remainingPrincipal - basePrincipalPayment
+		logger.Debug(fmt.Sprintf("%s: adjusting extraPrincipal to %.2f to prevent overpayment for loan %s",
+			date, adjustedExtraPrincipal, loanName),
+			zap.String("op", "loans.CalculateExtraPrincipalWithOverpaymentPrevention"),
+		)
+		return adjustedExtraPrincipal, nil
+	}
+
+	return baseExtraPrincipal, nil
+}
+
 func (g *AmortizationScheduleGenerator) calculateExtraPrincipal(loan *LoanConfig, date string) float64 {
 	amount := 0.00
 

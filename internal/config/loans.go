@@ -84,6 +84,7 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 	// Handle the first month individually. TODO consider using a ghost point
 	// to prevent having to treat this differently.
 	var firstPayment Payment
+
 	extraPrincipal, err := loan.ExtraPrincipal(logger, loan.StartDate)
 	if err != nil {
 		return err
@@ -169,8 +170,26 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 			}
 			break
 		} else {
-			// Check for extra principal
-			extraPrincipal, err := loan.ExtraPrincipal(logger, currentMonth)
+			// Check for extra principal using the advanced calculation with overpayment prevention
+			var loanEvents []loans.Event
+			for _, event := range loan.ExtraPrincipalPayments {
+				var dateList []string
+				for _, eventDate := range event.DateList {
+					dateList = append(dateList, eventDate.Format(datetime.DateTimeLayout))
+				}
+				loanEvents = append(loanEvents, loans.Event{
+					Name:      event.Name,
+					Amount:    event.Amount,
+					StartDate: event.StartDate,
+					EndDate:   event.EndDate,
+					Frequency: event.Frequency,
+					DateList:  dateList,
+				})
+			}
+
+			extraPrincipal, err := loans.CalculateExtraPrincipalWithOverpaymentPrevention(
+				logger, loanEvents, currentMonth, loanPayment,
+				loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.InterestRate, loan.Name)
 			if err != nil {
 				return err
 			}
@@ -178,31 +197,6 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 			currentPayment.Payment = loanPayment + loan.Escrow + extraPrincipal
 			currentPayment.Interest = loans.CalculateInterestPayment(loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.InterestRate)
 			currentPayment.Principal = loanPayment - currentPayment.Interest + extraPrincipal
-
-			// Ensure we do not overpay on extra principal
-			if mathutil.Round(currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal) < extraPrincipal &&
-				mathutil.Round(currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal) > 0 {
-				// We could pay off the loan by paying a portion, but not all of, the
-				// extra principal.
-				extraPrincipal = currentPayment.Principal - loan.AmortizationSchedule[previousMonth].RemainingPrincipal
-				currentPayment.Payment = loanPayment + loan.Escrow + extraPrincipal
-				currentPayment.Interest = loans.CalculateInterestPayment(loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.InterestRate)
-				logger.Debug(fmt.Sprintf("%s: adjusting extraPrincipal to %.2f to prevent overpayment for loan %s", currentMonth, extraPrincipal, loan.Name),
-					zap.String("op", "config.GetAmortizationSchedule"),
-				)
-				currentPayment.Principal = loanPayment - currentPayment.Interest + extraPrincipal
-			} else if mathutil.Round(currentPayment.Principal-loan.AmortizationSchedule[previousMonth].RemainingPrincipal) > extraPrincipal {
-				// In this case we should not be paying any extra principal; the
-				// payment is actually liable to be reduced; adjust extraPrincipal to
-				// be the appropriate non-positive value to make this adjustment.
-				extraPrincipal = loan.AmortizationSchedule[previousMonth].RemainingPrincipal - (currentPayment.Principal - extraPrincipal)
-				currentPayment.Payment = loanPayment + loan.Escrow + extraPrincipal
-				currentPayment.Interest = loans.CalculateInterestPayment(loan.AmortizationSchedule[previousMonth].RemainingPrincipal, loan.InterestRate)
-				currentPayment.Principal = loanPayment - currentPayment.Interest + extraPrincipal
-				logger.Debug(fmt.Sprintf("%s: adjusting extraPrincipal to %.2f to prevent overpayment for loan %s", currentMonth, extraPrincipal, loan.Name),
-					zap.String("op", "config.GetAmortizationSchedule"),
-				)
-			}
 
 			if month == loan.Term || mathutil.Round(loan.AmortizationSchedule[previousMonth].RemainingPrincipal-currentPayment.Principal) == 0 {
 				// We will get machine error otherwise so just set to 0.
@@ -261,24 +255,18 @@ func (loan *Loan) GetAmortizationSchedule(logger *zap.Logger, conf Configuration
 
 // ExtraPrincipal returns an extra principal payment, if present, or 0
 func (loan *Loan) ExtraPrincipal(logger *zap.Logger, date string) (float64, error) {
-	// Convert Event slice to loans.Event slice for the pkg/loans function
-	var loanEvents []loans.Event
+	amount := 0.00
 	for _, event := range loan.ExtraPrincipalPayments {
-		var dateList []string
-		for _, eventDate := range event.DateList {
-			dateList = append(dateList, eventDate.Format(datetime.DateTimeLayout))
+		for _, paymentDate := range event.DateList {
+			if paymentDate.Format(datetime.DateTimeLayout) == date {
+				logger.Debug(fmt.Sprintf("%s: applying extra principal payment %.2f for loan %s", date, event.Amount, loan.Name),
+					zap.String("op", "config.ExtraPrincipal"),
+				)
+				amount += event.Amount
+			}
 		}
-		loanEvents = append(loanEvents, loans.Event{
-			Name:      event.Name,
-			Amount:    event.Amount,
-			StartDate: event.StartDate,
-			EndDate:   event.EndDate,
-			Frequency: event.Frequency,
-			DateList:  dateList,
-		})
 	}
-
-	return loans.CalculateExtraPrincipal(loanEvents, date), nil
+	return amount, nil
 }
 
 // CheckEarlyPayoffThreshold checks for whether or not it is time to payoff a
