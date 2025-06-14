@@ -68,7 +68,7 @@ func TestLoanCalculationsAgainstReferenceSchedule(t *testing.T) {
 	}
 
 	referenceData := getReferenceSchedule()
-	tolerance := 0.50 // Allow $0.50 difference due to rounding
+	tolerance := 0.01 // Allow a negligible small difference due to rounding
 
 	for _, ref := range referenceData {
 		// Convert month number to date string
