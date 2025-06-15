@@ -27,7 +27,7 @@ finance-forecast --config=./config.yaml --output-format=csv
 - Compounded monthly
 - Escrow handling:
   - Refunded when loan is paid early (except December)
-  - Extrapolated to annual expense if asset not sold
+  - Extrapolated to annual expense if asset not sold following maturity
 
 ## Logging Configuration
 
