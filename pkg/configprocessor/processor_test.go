@@ -91,9 +91,9 @@ func TestProcessor_ValidateConfiguration(t *testing.T) {
 					},
 					Loans: []LoanInfo{
 						{
-							Name:      "Long Scenario Loan",
-							StartDate: "2025-01",
-							Term:      72, // 6 years
+							Name:      "Late Loan",
+							StartDate: "2026-01",
+							Term:      60, // 5 years, past death
 						},
 					},
 				},
@@ -109,14 +109,14 @@ func TestProcessor_ValidateConfiguration(t *testing.T) {
 					},
 					Loans: []LoanInfo{
 						{
-							Name:      "Should Be Ignored",
+							Name:      "Also Ignored",
 							StartDate: "2025-01",
-							Term:      120, // 10 years
+							Term:      120, // 10 years, past death
 						},
 					},
 				},
 			},
-			expectedWarnings: 5, // Common event (2) + common loan (1) + scenario event (2) + scenario loan (1) = 6, but inactive ignored
+			expectedWarnings: 4, // Event after death (2) + scenario event after death (2), no loan warnings
 		},
 		{
 			name:             "Empty configuration",

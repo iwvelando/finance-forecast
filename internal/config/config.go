@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iwvelando/finance-forecast/pkg/configprocessor"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"github.com/spf13/viper"
@@ -169,59 +168,39 @@ func (event *Event) FormDateList(conf Configuration) error {
 	return nil
 }
 
-// ValidateConfiguration checks for edge cases and returns warnings
-// This function identifies potential issues without failing the configuration
-func (conf *Configuration) ValidateConfiguration() []string {
-	processor := configprocessor.NewProcessor()
+// ValidateConfiguration performs general validation of the configuration and returns warnings
+func (c *Configuration) ValidateConfiguration() []string {
+	var warnings []string
 
-	// Convert common events
-	var commonEvents []configprocessor.EventInfo
-	for _, event := range conf.Common.Events {
-		commonEvents = append(commonEvents, configprocessor.EventInfo{
-			Name:      event.Name,
-			StartDate: event.StartDate,
-			EndDate:   event.EndDate,
-		})
+	// Validate common events
+	for _, event := range c.Common.Events {
+		if event.StartDate >= c.Common.DeathDate {
+			warnings = append(warnings, "Event '"+event.Name+"' starts at or after death date")
+		}
+		if event.EndDate != "" && event.EndDate > c.Common.DeathDate {
+			warnings = append(warnings, "Event '"+event.Name+"' ends after death date")
+		}
 	}
 
-	// Convert common loans
-	var commonLoans []configprocessor.LoanInfo
-	for _, loan := range conf.Common.Loans {
-		commonLoans = append(commonLoans, configprocessor.LoanInfo{
-			Name:      loan.Name,
-			StartDate: loan.StartDate,
-			Term:      loan.Term,
-		})
-	}
+	// Validate scenarios
+	for _, scenario := range c.Scenarios {
+		if !scenario.Active {
+			continue
+		}
 
-	// Convert scenarios
-	var scenarios []configprocessor.ScenarioInfo
-	for _, scenario := range conf.Scenarios {
-		var scenarioEvents []configprocessor.EventInfo
+		// Validate scenario events
 		for _, event := range scenario.Events {
-			scenarioEvents = append(scenarioEvents, configprocessor.EventInfo{
-				Name:      event.Name,
-				StartDate: event.StartDate,
-				EndDate:   event.EndDate,
-			})
+			if event.StartDate >= c.Common.DeathDate {
+				warnings = append(warnings, "Event 'Scenario '"+scenario.Name+"' event '"+event.Name+"'' starts at or after death date")
+			}
+			if event.EndDate != "" && event.EndDate > c.Common.DeathDate {
+				warnings = append(warnings, "Event 'Scenario '"+scenario.Name+"' event '"+event.Name+"'' ends after death date")
+			}
 		}
-
-		var scenarioLoans []configprocessor.LoanInfo
-		for _, loan := range scenario.Loans {
-			scenarioLoans = append(scenarioLoans, configprocessor.LoanInfo{
-				Name:      loan.Name,
-				StartDate: loan.StartDate,
-				Term:      loan.Term,
-			})
-		}
-
-		scenarios = append(scenarios, configprocessor.ScenarioInfo{
-			Name:   scenario.Name,
-			Active: scenario.Active,
-			Events: scenarioEvents,
-			Loans:  scenarioLoans,
-		})
 	}
 
-	return processor.ValidateConfiguration(conf.Common.DeathDate, commonEvents, commonLoans, scenarios)
+	if len(warnings) == 0 {
+		return nil
+	}
+	return warnings
 }

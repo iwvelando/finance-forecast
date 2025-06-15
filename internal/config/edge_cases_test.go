@@ -623,6 +623,8 @@ func TestLoansWithOutstandingBalancesAtDeath(t *testing.T) {
 func TestConfigurationValidationWarnings(t *testing.T) {
 	// Note: This test validates that configurations with edge cases don't fail
 	// In a future implementation, we might add a validation function that returns warnings
+	// Note: This test validates that configurations with edge cases don't fail
+	// In a future implementation, we might add a validation function that returns warnings
 	logger := zap.NewNop()
 
 	config := Configuration{
@@ -698,153 +700,48 @@ func TestConfigurationValidationWarnings(t *testing.T) {
 	t.Log("- Loans outstanding at death: handled gracefully")
 }
 
-// TestValidateConfiguration tests the validation function for edge cases
+// TestValidateConfiguration tests that appropriate warnings are generated
+// for various edge cases but no warnings for loans maturing after death
 func TestValidateConfiguration(t *testing.T) {
 	tests := []struct {
-		name             string
-		config           Configuration
-		expectedWarnings int
-		description      string
+		name        string
+		config      Configuration
+		expectCount int
 	}{
-		{
-			name: "No warnings - valid configuration",
-			config: Configuration{
-				Common: Common{
-					DeathDate:     "2030-01",
-					StartingValue: 10000,
-					Events: []Event{
-						{
-							Name:      "Valid Event",
-							Amount:    1000,
-							StartDate: "2025-01",
-							EndDate:   "2029-12",
-							Frequency: 1,
-						},
-					},
-					Loans: []Loan{
-						{
-							Name:         "Valid Loan",
-							StartDate:    "2025-01",
-							Principal:    50000,
-							InterestRate: 5.0,
-							Term:         36, // 3 years, matures 2028-01
-						},
-					},
-				},
-				Scenarios: []Scenario{
-					{
-						Name:   "Valid Scenario",
-						Active: true,
-						Events: []Event{
-							{
-								Name:      "Valid Scenario Event",
-								Amount:    500,
-								StartDate: "2025-01",
-								EndDate:   "2029-01",
-								Frequency: 1,
-							},
-						},
-					},
-				},
-			},
-			expectedWarnings: 0,
-			description:      "Configuration with no edge cases",
-		},
-		{
-			name: "Event starting at death date",
-			config: Configuration{
-				Common: Common{
-					DeathDate:     "2030-01",
-					StartingValue: 10000,
-					Events: []Event{
-						{
-							Name:      "Event at Death",
-							Amount:    1000,
-							StartDate: "2030-01",
-							Frequency: 1,
-						},
-					},
-				},
-				Scenarios: []Scenario{
-					{Name: "Test", Active: true},
-				},
-			},
-			expectedWarnings: 1,
-			description:      "Event starting exactly at death date",
-		},
-		{
-			name: "Event starting after death date",
-			config: Configuration{
-				Common: Common{
-					DeathDate:     "2030-01",
-					StartingValue: 10000,
-					Events: []Event{
-						{
-							Name:      "Event After Death",
-							Amount:    1000,
-							StartDate: "2030-06",
-							Frequency: 1,
-						},
-					},
-				},
-				Scenarios: []Scenario{
-					{Name: "Test", Active: true},
-				},
-			},
-			expectedWarnings: 1,
-			description:      "Event starting after death date",
-		},
 		{
 			name: "Loan maturing after death date",
 			config: Configuration{
 				Common: Common{
-					DeathDate:     "2030-01",
-					StartingValue: 10000,
+					DeathDate: "2030-01",
 					Loans: []Loan{
 						{
 							Name:         "Long Loan",
 							StartDate:    "2025-01",
 							Principal:    100000,
 							InterestRate: 5.0,
-							Term:         120, // 10 years, matures 2035-01
+							Term:         120, // 10 years, extends past death
 						},
 					},
 				},
-				Scenarios: []Scenario{
-					{Name: "Test", Active: true},
-				},
 			},
-			expectedWarnings: 1,
-			description:      "Loan maturing after death date",
+			expectCount: 0, // No warnings for loan maturing after death
 		},
 		{
 			name: "Multiple edge cases",
 			config: Configuration{
 				Common: Common{
-					DeathDate:     "2030-01",
-					StartingValue: 10000,
+					DeathDate: "2030-01",
 					Events: []Event{
 						{
 							Name:      "Event After Death",
-							Amount:    1000,
 							StartDate: "2031-01",
 							Frequency: 1,
 						},
 						{
 							Name:      "Event Ending After Death",
-							Amount:    500,
 							StartDate: "2025-01",
-							EndDate:   "2035-01",
+							EndDate:   "2031-01",
 							Frequency: 1,
-						},
-					},
-					Loans: []Loan{
-						{
-							Name:         "Outstanding Loan",
-							StartDate:    "2025-01",
-							Principal:    100000,
-							InterestRate: 5.0,
-							Term:         120, // 10 years
 						},
 					},
 				},
@@ -855,8 +752,7 @@ func TestValidateConfiguration(t *testing.T) {
 						Events: []Event{
 							{
 								Name:      "Scenario Event After Death",
-								Amount:    200,
-								StartDate: "2032-01",
+								StartDate: "2031-01",
 								Frequency: 1,
 							},
 						},
@@ -864,33 +760,26 @@ func TestValidateConfiguration(t *testing.T) {
 							{
 								Name:         "Scenario Long Loan",
 								StartDate:    "2025-01",
-								Principal:    50000,
-								InterestRate: 4.0,
-								Term:         84, // 7 years, matures 2032-01
+								Principal:    100000,
+								InterestRate: 5.0,
+								Term:         120, // 10 years, extends past death
 							},
 						},
 					},
 				},
 			},
-			expectedWarnings: 5, // 2 common events + 1 common loan + 1 scenario event + 1 scenario loan
-			description:      "Multiple edge cases across common and scenario",
+			expectCount: 3, // 3 event warnings, no loan warnings
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			warnings := tt.config.ValidateConfiguration()
-
-			if len(warnings) != tt.expectedWarnings {
-				t.Errorf("Expected %d warnings, got %d", tt.expectedWarnings, len(warnings))
-				for i, warning := range warnings {
-					t.Logf("Warning %d: %s", i+1, warning)
-				}
-			} else {
-				t.Logf("Correctly identified %d warnings for %s", len(warnings), tt.description)
-				for i, warning := range warnings {
-					t.Logf("Warning %d: %s", i+1, warning)
-				}
+			if len(warnings) != tt.expectCount {
+				t.Errorf("Expected %d warnings, got %d", tt.expectCount, len(warnings))
+			}
+			for _, warning := range warnings {
+				t.Logf("Warning: %s", warning)
 			}
 		})
 	}

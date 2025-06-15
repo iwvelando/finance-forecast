@@ -7,18 +7,12 @@ import (
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
 )
 
-// ValidateDeathDate checks if loans mature before the death date
+// ValidateDeathDate validates loan start date format but doesn't generate warnings for loans maturing after death
 func ValidateDeathDate(loanName, startDate, deathDate string, termMonths int) (string, error) {
-	maturityDate, err := datetime.OffsetDate(startDate, datetime.DateTimeLayout, termMonths)
+	_, err := datetime.OffsetDate(startDate, datetime.DateTimeLayout, termMonths)
 	if err != nil {
 		return "", err
 	}
-
-	if maturityDate > deathDate {
-		return fmt.Sprintf("Loan '%s' matures after death date (%s > %s) - loan will have outstanding balance",
-			loanName, maturityDate, deathDate), nil
-	}
-
 	return "", nil
 }
 
@@ -93,26 +87,7 @@ func (cv *ConfigValidator) ValidateAll() []string {
 		}
 	}
 
-	// Check common loans for terms extending past death
-	for _, loan := range cv.Common.Loans {
-		warning, err := ValidateDeathDate(fmt.Sprintf("Common loan '%s'", loan.Name), loan.StartDate, deathDate, loan.Term)
-		if err == nil && warning != "" {
-			warnings = append(warnings, warning)
-		}
-	}
-
-	// Check scenario loans for terms extending past death
-	for _, scenario := range cv.Scenarios {
-		if !scenario.Active {
-			continue
-		}
-		for _, loan := range scenario.Loans {
-			warning, err := ValidateDeathDate(fmt.Sprintf("Scenario '%s' loan '%s'", scenario.Name, loan.Name), loan.StartDate, deathDate, loan.Term)
-			if err == nil && warning != "" {
-				warnings = append(warnings, warning)
-			}
-		}
-	}
+	// No validation needed for loan maturity dates
 
 	return warnings
 }

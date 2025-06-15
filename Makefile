@@ -122,6 +122,16 @@ lint:
 		echo "Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
 
+.PHONY: yamllint
+yamllint:
+	@echo "Running yamllint on config.yaml.example..."
+	@if command -v yamllint >/dev/null 2>&1; then \
+		yamllint config.yaml.example; \
+	else \
+		echo "yamllint not found, skipping YAML lint check"; \
+		echo "See dev-setup target for installation instructions"; \
+	fi
+
 # Dependency management
 .PHONY: deps
 deps:
@@ -152,10 +162,17 @@ dev-setup: deps
 		echo "Installing golangci-lint..."; \
 		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
 	fi
+	@if ! command -v yamllint >/dev/null 2>&1; then \
+		echo "yamllint not found. Please install it using your package manager:"; \
+		echo "  - For MacOS: brew install yamllint"; \
+		echo "  - For Ubuntu/Debian: sudo apt install yamllint"; \
+		echo "  - For CentOS/RHEL: sudo yum install yamllint"; \
+		echo "  - Using pip: pip install yamllint"; \
+	fi
 	@echo "Development environment ready!"
 
 .PHONY: check
-check: fmt vet lint test-all
+check: fmt vet lint yamllint test-all
 	@echo "All checks passed!"
 
 .PHONY: run-example

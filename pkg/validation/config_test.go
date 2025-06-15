@@ -29,7 +29,7 @@ func TestValidateDeathDate(t *testing.T) {
 			startDate:   "2025-01",
 			deathDate:   "2028-01",
 			termMonths:  60, // 5 years, extends to 2030
-			expectWarn:  true,
+			expectWarn:  false,
 			expectError: false,
 		},
 		{
@@ -249,7 +249,7 @@ func TestConfigValidator_ValidateAll(t *testing.T) {
 					},
 				},
 			},
-			expectWarnCount: 5, // Event after death (2), loan after death (1), scenario event after death (2), but inactive scenario ignored
+			expectWarnCount: 4, // Event after death (2), scenario event after death (2), but inactive scenario ignored
 		},
 	}
 
@@ -318,8 +318,8 @@ func TestConfigValidator_InactiveScenarios(t *testing.T) {
 	warnings := validator.ValidateAll()
 
 	// Should only get warnings from active scenario
-	// Active scenario: event after death (2 warnings) + loan after death (1 warning) = 3 total
-	expectedWarnings := 3
+	// Active scenario: event after death (2 warnings) = 2 total
+	expectedWarnings := 2
 	if len(warnings) != expectedWarnings {
 		t.Errorf("Expected %d warnings for active scenario only, got %d", expectedWarnings, len(warnings))
 	}

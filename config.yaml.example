@@ -1,10 +1,12 @@
+---
 # Example Configuration for Finance Forecast
 # Copy this file to config.yaml and modify as needed
 
 # Logging configuration (optional)
 logging:
   level: info        # Options: debug, info, warn, error (default: info)
-  format: console    # Options: console (human-readable) or json (structured) (default: json)
+  format: json       # Options: console (human-readable) or json (structured)
+  # (default: json)
   # output_file: forecast.log  # Optional: log to file instead of stdout
 
 # common events and loans are shared among all scenarios you are tracking.

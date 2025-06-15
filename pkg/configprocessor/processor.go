@@ -50,24 +50,6 @@ func (p *Processor) ValidateConfiguration(deathDate string, commonEvents []Event
 		}
 	}
 
-	// Validate common loans
-	for _, loan := range commonLoans {
-		if loan.StartDate != "" && loan.Term > 0 {
-			// Calculate maturity date (simplified)
-			startYear := 2025 // Simplified parsing
-			if len(loan.StartDate) >= 4 {
-				// Very basic year extraction for testing
-				if loan.StartDate[:4] == "2025" {
-					startYear = 2025
-				}
-			}
-			maturityYear := startYear + (loan.Term / 12)
-			if maturityYear > 2030 { // Simplified death date comparison
-				warnings = append(warnings, "Loan 'Common loan '"+loan.Name+"'' matures after death date")
-			}
-		}
-	}
-
 	// Validate active scenarios
 	for _, scenario := range scenarios {
 		if !scenario.Active {
@@ -81,18 +63,6 @@ func (p *Processor) ValidateConfiguration(deathDate string, commonEvents []Event
 			}
 			if event.EndDate != "" && event.EndDate > deathDate {
 				warnings = append(warnings, "Event 'Scenario '"+scenario.Name+"' event '"+event.Name+"'' ends after death date ("+event.EndDate+" > "+deathDate+")")
-			}
-		}
-
-		// Validate scenario loans
-		for _, loan := range scenario.Loans {
-			if loan.StartDate != "" && loan.Term > 0 {
-				// Simplified maturity calculation
-				startYear := 2025
-				maturityYear := startYear + (loan.Term / 12)
-				if maturityYear > 2030 {
-					warnings = append(warnings, "Loan 'Scenario '"+scenario.Name+"' loan '"+loan.Name+"'' matures after death date")
-				}
 			}
 		}
 	}
