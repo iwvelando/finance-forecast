@@ -30,6 +30,10 @@ func (w ConfigEventAdapter) GetDateList() []time.Time {
 
 // EventsToFinanceEvents converts config.Event slices to finance.EventWithDates slices
 func EventsToFinanceEvents(events []config.Event) []finance.EventWithDates {
+	if events == nil {
+		return nil
+	}
+
 	var financeEvents []finance.EventWithDates
 	for _, event := range events {
 		financeEvents = append(financeEvents, ConfigEventAdapter{Event: event})
@@ -55,6 +59,10 @@ func (w ConfigLoanAdapter) GetPaymentForDate(date string) (float64, bool) {
 
 // LoansToFinanceLoans converts config.Loan slices to finance.LoanWithSchedule slices
 func LoansToFinanceLoans(loans []config.Loan) []finance.LoanWithSchedule {
+	if loans == nil {
+		return nil
+	}
+
 	var financeLoans []finance.LoanWithSchedule
 	for _, loan := range loans {
 		financeLoans = append(financeLoans, ConfigLoanAdapter{Loan: loan})

@@ -42,6 +42,10 @@ func CalculateInterestPayment(remainingPrincipal, annualInterestRate float64) fl
 // loan early based on an optionally-configured threshold.
 func CheckEarlyPayoffThreshold(logger *zap.Logger, loanName, startDate, currentMonth string, threshold float64,
 	amortizationSchedule map[string]Payment, balance float64) (string, error) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	var note string
 
 	started, err := datetime.DateBeforeDate(startDate, currentMonth)
@@ -103,6 +107,9 @@ type AmortizationScheduleGenerator struct {
 
 // NewAmortizationScheduleGenerator creates a new generator instance
 func NewAmortizationScheduleGenerator(logger *zap.Logger) *AmortizationScheduleGenerator {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &AmortizationScheduleGenerator{logger: logger}
 }
 

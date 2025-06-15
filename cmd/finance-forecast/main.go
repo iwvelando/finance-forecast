@@ -6,6 +6,7 @@ import (
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/output"
 	"github.com/iwvelando/finance-forecast/pkg/validation"
 	"go.uber.org/zap"
@@ -68,8 +69,8 @@ func initializeLogger(loggingConfig config.LoggingConfig, logLevelOverride strin
 
 func main() {
 	// Process command line flags first to get config location
-	configLocation := flag.String("config", "config.yaml", "path to configuration file")
-	outputFormat := flag.String("output-format", "pretty", "type of output: pretty, csv")
+	configLocation := flag.String("config", constants.DefaultConfigFile, "path to configuration file")
+	outputFormat := flag.String("output-format", constants.OutputFormatPretty, "type of output: pretty, csv")
 	logLevel := flag.String("log-level", "", "log level override (debug, info, warn, error)")
 	flag.Parse()
 
@@ -77,14 +78,14 @@ func main() {
 	conf, err := config.LoadConfiguration(*configLocation)
 	if err != nil {
 		fmt.Printf("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to load configuration at %s\", \"error\": \"%v\"}\n", *configLocation, err)
-		panic(err)
+		return
 	}
 
 	// Initialize logging based on config and CLI override
 	logger, err := initializeLogger(conf.Logging, *logLevel)
 	if err != nil {
 		fmt.Printf("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to initialize logger\", \"error\": \"%v\"}\n", err)
-		panic(err)
+		return
 	}
 	defer func() {
 		_ = logger.Sync()
@@ -134,9 +135,9 @@ func main() {
 
 	// Handle output.
 	switch *outputFormat {
-	case "pretty":
+	case constants.OutputFormatPretty:
 		output.PrettyFormat(results)
-	case "csv":
+	case constants.OutputFormatCSV:
 		output.CsvFormat(results)
 	}
 

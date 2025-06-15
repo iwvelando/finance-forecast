@@ -22,6 +22,10 @@ type Forecast struct {
 
 // GetForecast processes the Forecasts for all Scenarios.
 func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, error) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	var results []Forecast
 	startDate := time.Now().Format(config.DateTimeLayout)
 	for i, scenario := range conf.Scenarios {
