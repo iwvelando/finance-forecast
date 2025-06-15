@@ -40,12 +40,8 @@ func CalculateInterestPayment(remainingPrincipal, annualInterestRate float64) fl
 
 // CheckEarlyPayoffThreshold checks for whether or not it is time to payoff a
 // loan early based on an optionally-configured threshold.
-func CheckEarlyPayoffThreshold(logger *zap.Logger, loanName, startDate, currentMonth string, threshold float64,
+func CheckEarlyPayoffThreshold(loanName, startDate, currentMonth string, threshold float64,
 	amortizationSchedule map[string]Payment, balance float64) (string, error) {
-	if logger == nil {
-		logger = zap.NewNop()
-	}
-
 	var note string
 
 	started, err := datetime.DateBeforeDate(startDate, currentMonth)

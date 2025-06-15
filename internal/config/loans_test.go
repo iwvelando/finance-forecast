@@ -286,8 +286,6 @@ func TestExtraPrincipal(t *testing.T) {
 }
 
 func TestCheckEarlyPayoffThreshold(t *testing.T) {
-	logger, _ := zap.NewDevelopment()
-
 	loan := &Loan{
 		Name:                 "Test Loan",
 		StartDate:            "2025-01",
@@ -319,7 +317,7 @@ func TestCheckEarlyPayoffThreshold(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			note, err := loan.CheckEarlyPayoffThreshold(logger, tt.currentMonth, "2030-01", tt.balance)
+			note, err := loan.CheckEarlyPayoffThreshold(tt.currentMonth, "2030-01", tt.balance)
 			if err != nil {
 				t.Errorf("CheckEarlyPayoffThreshold() error = %v", err)
 			}
@@ -369,5 +367,87 @@ func TestLoanSellProperty(t *testing.T) {
 	// This should typically be negative (money received) or small positive
 	if payoffPayment.Payment > 50000 {
 		t.Errorf("Property sale payoff payment seems too high: %.2f", payoffPayment.Payment)
+	}
+}
+
+// TestLoanNilSafeConversion tests nil safety in object conversion functions
+func TestLoanNilSafeConversion(t *testing.T) {
+	// Test nil-safe conversion
+	var loan *Loan
+	result := loan.ToLoansConfig()
+	if result != nil {
+		t.Errorf("Expected nil result for nil loan, got %v", result)
+	}
+}
+
+// TestLoanErrorHandling tests proper error handling for various functions
+func TestLoanErrorHandling(t *testing.T) {
+	// Test proper error handling in GetAmortizationSchedule
+	testLoan := &Loan{
+		Name:      "Test Loan",
+		StartDate: "2025-01",
+		Principal: 100000,
+	}
+
+	// Test with nil logger - should not error since function creates no-op logger
+	err := testLoan.GetAmortizationSchedule(nil, Configuration{})
+	if err != nil {
+		t.Logf("GetAmortizationSchedule error with nil logger (expected for incomplete loan config): %v", err)
+	}
+
+	// Test with valid logger
+	logger := zap.NewNop()
+	conf := Configuration{
+		Common: Common{
+			DeathDate: "2030-01",
+		},
+	}
+
+	err = testLoan.GetAmortizationSchedule(logger, conf)
+	if err != nil {
+		t.Logf("GetAmortizationSchedule error (expected for incomplete loan config): %v", err)
+	}
+
+	// Test CheckEarlyPayoffThreshold with nil checks
+	// Create a loan pointer that's nil to test nil safety
+	var nilLoan *Loan
+	_, err = nilLoan.CheckEarlyPayoffThreshold("2025-01", "2030-01", 50000)
+	if err == nil {
+		t.Errorf("Expected error for nil loan in CheckEarlyPayoffThreshold, got none")
+	}
+
+	// Test with empty currentMonth
+	_, err = testLoan.CheckEarlyPayoffThreshold("", "2030-01", 50000)
+	if err == nil {
+		t.Errorf("Expected error for empty currentMonth, got none")
+	}
+
+	// Test with empty deathDate
+	_, err = testLoan.CheckEarlyPayoffThreshold("2025-01", "", 50000)
+	if err == nil {
+		t.Errorf("Expected error for empty deathDate, got none")
+	}
+}
+
+// TestProcessLoansNilSafety tests the nil safety in ProcessLoans
+func TestProcessLoansNilSafety(t *testing.T) {
+	logger := zap.NewNop()
+
+	// Test nil configuration
+	var conf *Configuration
+	err := conf.ProcessLoans(logger)
+	if err == nil {
+		t.Errorf("Expected error for nil configuration, got none")
+	}
+
+	// Test nil logger - this should pass now with our fix
+	validConf := &Configuration{
+		Common: Common{
+			DeathDate: "2030-01",
+		},
+	}
+	err = validConf.ProcessLoans(nil)
+	if err != nil {
+		t.Errorf("Expected no error for nil logger after fix, got: %v", err)
 	}
 }

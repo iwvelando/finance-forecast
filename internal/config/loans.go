@@ -145,12 +145,9 @@ func (loan *Loan) ExtraPrincipal(logger *zap.Logger, date string) (float64, erro
 
 // CheckEarlyPayoffThreshold checks for whether or not it is time to payoff a
 // loan early based on an optionally-configured threshold.
-func (loan *Loan) CheckEarlyPayoffThreshold(logger *zap.Logger, currentMonth, deathDate string, balance float64) (string, error) {
+func (loan *Loan) CheckEarlyPayoffThreshold(currentMonth, deathDate string, balance float64) (string, error) {
 	if loan == nil {
 		return "", fmt.Errorf("loan cannot be nil")
-	}
-	if logger == nil {
-		logger = zap.NewNop()
 	}
 	if currentMonth == "" {
 		return "", fmt.Errorf("currentMonth cannot be empty")
@@ -166,7 +163,7 @@ func (loan *Loan) CheckEarlyPayoffThreshold(logger *zap.Logger, currentMonth, de
 	}
 
 	// Create generator
-	generator := loans.NewAmortizationScheduleGenerator(logger)
+	generator := loans.NewAmortizationScheduleGenerator(nil) // Pass nil since the logger isn't used in the function
 
 	// Use the generator to check early payoff threshold
 	note, err := generator.CheckEarlyPayoffThresholdAndUpdate(loanConfig, currentMonth, deathDate, balance, loanConfig.AmortizationSchedule)

@@ -121,8 +121,6 @@ func TestCalculateInterestPayment(t *testing.T) {
 }
 
 func TestCheckEarlyPayoffThreshold(t *testing.T) {
-	logger := zap.NewNop()
-
 	// Create mock amortization schedule
 	schedule := map[string]Payment{
 		"2025-05": {RemainingPrincipal: 44000}, // Previous month to 2025-06
@@ -179,7 +177,6 @@ func TestCheckEarlyPayoffThreshold(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			note, err := CheckEarlyPayoffThreshold(
-				logger,
 				tt.loanName,
 				tt.startDate,
 				tt.currentMonth,

@@ -74,7 +74,7 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			projectedBalance := result.Data[previousDate] + scenarioChanges + commonChanges
 
 			for j := range conf.Scenarios[i].Loans {
-				note, err := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, projectedBalance)
+				note, err := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(date, conf.Common.DeathDate, projectedBalance)
 				if err != nil {
 					return results, err
 				}
@@ -84,7 +84,7 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			}
 
 			for j := range conf.Common.Loans {
-				note, err := conf.Common.Loans[j].CheckEarlyPayoffThreshold(logger, date, conf.Common.DeathDate, projectedBalance)
+				note, err := conf.Common.Loans[j].CheckEarlyPayoffThreshold(date, conf.Common.DeathDate, projectedBalance)
 				if err != nil {
 					return results, err
 				}
