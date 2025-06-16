@@ -22,7 +22,18 @@ type Forecast struct {
 
 // GetForecast processes the Forecasts for all Scenarios.
 func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, error) {
-	return GetForecastWithFixedTime(logger, conf, time.Now())
+	// Use configured start date or current time
+	var startTime time.Time
+	if conf.StartDate != "" {
+		var err error
+		startTime, err = time.Parse(config.DateTimeLayout, conf.StartDate)
+		if err != nil {
+			return nil, fmt.Errorf("invalid startDate format '%s', expected YYYY-MM: %v", conf.StartDate, err)
+		}
+	} else {
+		startTime = time.Now()
+	}
+	return GetForecastWithFixedTime(logger, conf, startTime)
 }
 
 // GetForecastWithFixedTime generates forecasts using a fixed current time for deterministic testing

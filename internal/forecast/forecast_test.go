@@ -312,3 +312,52 @@ func TestGetForecastRealistic(t *testing.T) {
 		}
 	}
 }
+
+func TestGetForecastWithConfiguredStartDate(t *testing.T) {
+	logger := zap.NewNop()
+
+	// Create a test configuration with a specific start date
+	conf := config.Configuration{
+		StartDate: "2025-06",
+		Common: config.Common{
+			StartingValue: 15000.0,
+			DeathDate:     "2025-12",
+			Events: []config.Event{
+				{
+					Name:     "Test Income",
+					Amount:   1000.0,
+					DateList: []time.Time{datetime.MustParseTime(config.DateTimeLayout, "2025-07")},
+				},
+			},
+		},
+		Scenarios: []config.Scenario{
+			{
+				Name:   "Test Scenario",
+				Active: true,
+				Events: []config.Event{},
+				Loans:  []config.Loan{},
+			},
+		},
+	}
+
+	results, err := GetForecast(logger, conf)
+	if err != nil {
+		t.Fatalf("GetForecast() error = %v", err)
+	}
+
+	// Should have 1 result
+	if len(results) != 1 {
+		t.Errorf("Expected 1 forecast result, got %d", len(results))
+	}
+
+	result := results[0]
+	// Verify starting value is set at the configured start date
+	if result.Data["2025-06"] != 15000.0 {
+		t.Errorf("Expected starting value 15000.0 at configured start date, got %.2f", result.Data["2025-06"])
+	}
+
+	// Verify we have data for subsequent months
+	if _, exists := result.Data["2025-07"]; !exists {
+		t.Errorf("Expected data for month after start date")
+	}
+}

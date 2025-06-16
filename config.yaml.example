@@ -2,6 +2,10 @@
 # Example Configuration for Finance Forecast
 # Copy this file to config.yaml and modify as needed
 
+# Optional: Set a specific start date for the simulation (YYYY-MM format)
+# If not specified, the simulation will start from the current month
+# startDate: 2025-01
+
 # Logging configuration (optional)
 logging:
   level: info        # Options: debug, info, warn, error (default: info)

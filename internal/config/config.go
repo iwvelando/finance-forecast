@@ -22,6 +22,7 @@ type Configuration struct {
 	Scenarios []Scenario
 	Logging   LoggingConfig `yaml:"logging,omitempty"`
 	Output    OutputConfig  `yaml:"output,omitempty"`
+	StartDate string        `yaml:"startDate,omitempty"` // Optional simulation start date (YYYY-MM)
 }
 
 // LoggingConfig holds logging configuration options
@@ -86,7 +87,18 @@ func LoadConfiguration(configPath string) (*Configuration, error) {
 // ParseDateLists looks at every date provided in the configuration and
 // parses it into a time.Time which is stored back into an Event.DateList.
 func (conf *Configuration) ParseDateLists() error {
-	return conf.ParseDateListsWithFixedTime(time.Now())
+	// Use configured start date or current time
+	var startTime time.Time
+	if conf.StartDate != "" {
+		var err error
+		startTime, err = time.Parse(DateTimeLayout, conf.StartDate)
+		if err != nil {
+			return fmt.Errorf("invalid startDate format '%s', expected YYYY-MM: %v", conf.StartDate, err)
+		}
+	} else {
+		startTime = time.Now()
+	}
+	return conf.ParseDateListsWithFixedTime(startTime)
 }
 
 // ParseDateListsWithFixedTime parses all date lists in the configuration using a fixed time
@@ -134,7 +146,18 @@ func (conf *Configuration) ParseDateListsWithFixedTime(fixedTime time.Time) erro
 // FormDateList handles the date to time.Time parsing for one given event.
 // This utilizes the datetime package for parsing and date manipulation.
 func (event *Event) FormDateList(conf Configuration) error {
-	return event.FormDateListWithFixedTime(conf, time.Now())
+	// Use configured start date or current time
+	var startTime time.Time
+	if conf.StartDate != "" {
+		var err error
+		startTime, err = time.Parse(DateTimeLayout, conf.StartDate)
+		if err != nil {
+			return fmt.Errorf("invalid startDate format '%s', expected YYYY-MM: %v", conf.StartDate, err)
+		}
+	} else {
+		startTime = time.Now()
+	}
+	return event.FormDateListWithFixedTime(conf, startTime)
 }
 
 // FormDateListWithFixedTime handles the date to time.Time parsing for one given event

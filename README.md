@@ -20,8 +20,8 @@ finance-forecast --config=config.yaml.example --output-format=csv
 ## Key Concepts
 
 ### Simulation
-- Processing starts the month after execution
-- Initial value should account for current month
+- Processing starts from the configured `startDate` (YYYY-MM format) or current month if not specified
+- Initial value should account for the month preceding the start date
 
 ### Loans
 - Compounded monthly

@@ -185,6 +185,50 @@ func TestParseDateLists(t *testing.T) {
 	}
 }
 
+func TestParseDateListsWithStartDate(t *testing.T) {
+	config, err := LoadConfiguration("../../test/test_config.yaml")
+	if err != nil {
+		t.Fatalf("LoadConfiguration() error = %v", err)
+	}
+
+	// Set a specific start date in the configuration
+	config.StartDate = "2025-06"
+
+	err = config.ParseDateLists()
+	if err != nil {
+		t.Fatalf("ParseDateLists() with startDate error = %v", err)
+	}
+
+	// Verify that events are processed correctly with the configured start date
+	for i, scenario := range config.Scenarios {
+		for j, event := range scenario.Events {
+			if len(event.DateList) == 0 {
+				t.Errorf("Scenario %d, Event %d (%s) has empty DateList", i, j, event.Name)
+			}
+		}
+	}
+
+	for i, event := range config.Common.Events {
+		if len(event.DateList) == 0 {
+			t.Errorf("Common Event %d (%s) has empty DateList", i, event.Name)
+		}
+	}
+}
+
+func TestParseDateListsInvalidStartDate(t *testing.T) {
+	config := &Configuration{
+		StartDate: "invalid-date",
+		Common: Common{
+			DeathDate: "2030-01",
+		},
+	}
+
+	err := config.ParseDateLists()
+	if err == nil {
+		t.Errorf("ParseDateLists() with invalid startDate expected error but got none")
+	}
+}
+
 func TestEventFormDateList(t *testing.T) {
 	config := Configuration{
 		Common: Common{
