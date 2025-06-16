@@ -12,8 +12,49 @@ import (
 
 // Simple temporary implementation to get tests passing
 func TestPrettyFormat(t *testing.T) {
-	// Skip this test for now to focus on fixing compilation errors
-	t.Skip("Temporarily skipped while fixing other issues")
+	// Create test data
+	results := []forecast.Forecast{
+		{
+			Name: "Test Scenario",
+			Data: map[string]float64{
+				"2025-01": 1000.00,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Test note"},
+			},
+		},
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	PrettyFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	// Should contain the original format elements
+	if !strings.Contains(output, "--- Results for scenario Test Scenario ---") {
+		t.Errorf("PrettyFormat missing scenario header")
+	}
+	if !strings.Contains(output, "Date    | Amount        | Notes") {
+		t.Errorf("PrettyFormat missing table header")
+	}
+	if !strings.Contains(output, "____    | _____________ | _____") {
+		t.Errorf("PrettyFormat missing table separator")
+	}
+	if !strings.Contains(output, "$1,000.00") {
+		t.Errorf("PrettyFormat missing formatted amount with commas")
+	}
+	if !strings.Contains(output, "Test note") {
+		t.Errorf("PrettyFormat missing note")
+	}
 }
 
 func TestPrettyFormatSingleScenario(t *testing.T) {
@@ -45,14 +86,17 @@ func TestPrettyFormatSingleScenario(t *testing.T) {
 	output := buf.String()
 
 	// Should contain scenario name and data
-	if !strings.Contains(output, "Single Scenario") {
-		t.Errorf("PrettyFormat missing scenario name")
+	if !strings.Contains(output, "--- Results for scenario Single Scenario ---") {
+		t.Errorf("PrettyFormat missing scenario header")
 	}
-	if !strings.Contains(output, "$1000.00") {
-		t.Errorf("PrettyFormat missing amount")
+	if !strings.Contains(output, "$1,000.00") {
+		t.Errorf("PrettyFormat missing formatted amount")
 	}
 	if !strings.Contains(output, "Single note") {
 		t.Errorf("PrettyFormat missing note")
+	}
+	if !strings.Contains(output, "Date    | Amount        | Notes") {
+		t.Errorf("PrettyFormat missing table header")
 	}
 }
 

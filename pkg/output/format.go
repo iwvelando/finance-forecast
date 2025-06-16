@@ -9,6 +9,31 @@ import (
 	"github.com/iwvelando/finance-forecast/internal/forecast"
 )
 
+// formatCurrency formats a float64 as currency with commas
+func formatCurrency(amount float64) string {
+	// Format with 2 decimal places
+	formatted := fmt.Sprintf("%.2f", amount)
+
+	// Split into integer and decimal parts
+	parts := strings.Split(formatted, ".")
+	intPart := parts[0]
+	decPart := parts[1]
+
+	// Add commas to integer part
+	if len(intPart) > 3 {
+		var result strings.Builder
+		for i, digit := range intPart {
+			if i > 0 && (len(intPart)-i)%3 == 0 {
+				result.WriteString(",")
+			}
+			result.WriteRune(digit)
+		}
+		intPart = result.String()
+	}
+
+	return intPart + "." + decPart
+}
+
 // PrettyFormat formats the forecast results in a human-readable format
 func PrettyFormat(results []forecast.Forecast) {
 	if len(results) == 0 {
@@ -31,18 +56,22 @@ func PrettyFormat(results []forecast.Forecast) {
 	}
 	sort.Strings(dates)
 
-	// Format output
+	// Format output in original style
 	for _, scenario := range results {
-		fmt.Printf("\n=== %s ===\n", scenario.Name)
+		fmt.Printf("--- Results for scenario %s ---\n", scenario.Name)
+		fmt.Printf("Date    | Amount        | Notes\n")
+		fmt.Printf("____    | _____________ | _____\n")
+
 		for _, date := range dates {
 			if balance, exists := scenario.Data[date]; exists {
-				fmt.Printf("%s | $%.2f", date, balance)
+				fmt.Printf("%s | $%s | ", date, formatCurrency(balance))
 				if notes, hasNotes := scenario.Notes[date]; hasNotes && len(notes) > 0 {
-					fmt.Printf(" | %s", strings.Join(notes, ", "))
+					fmt.Printf("%s", strings.Join(notes, ", "))
 				}
 				fmt.Println()
 			}
 		}
+		fmt.Println() // Extra blank line between scenarios
 	}
 }
 
