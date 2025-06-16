@@ -132,3 +132,7 @@ scenarios:
 logging:
   level: info        # Use info level for tests to reduce noise
   format: json       # Use JSON format for consistent test output
+
+# Output configuration for tests
+output:
+  format: pretty     # Use pretty format for human-readable test output

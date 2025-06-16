@@ -20,6 +20,7 @@ type Configuration struct {
 	Common    Common
 	Scenarios []Scenario
 	Logging   LoggingConfig `yaml:"logging,omitempty"`
+	Output    OutputConfig  `yaml:"output,omitempty"`
 }
 
 // LoggingConfig holds logging configuration options
@@ -27,6 +28,11 @@ type LoggingConfig struct {
 	Level      string `yaml:"level,omitempty"`      // debug, info, warn, error
 	Format     string `yaml:"format,omitempty"`     // json, console
 	OutputFile string `yaml:"outputFile,omitempty"` // optional file output
+}
+
+// OutputConfig holds output format configuration options
+type OutputConfig struct {
+	Format string `yaml:"format,omitempty"` // pretty, csv
 }
 
 // Common holds the shared parameters, events, and loans between all scenarios.

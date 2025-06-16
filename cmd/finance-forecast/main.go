@@ -86,7 +86,7 @@ func initializeLogger(loggingConfig config.LoggingConfig, logLevelOverride strin
 func main() {
 	// Process command line flags first to get config location
 	configLocation := flag.String("config", constants.DefaultConfigFile, "path to configuration file")
-	outputFormat := flag.String("output-format", constants.OutputFormatPretty, "type of output: pretty, csv")
+	outputFormatFlag := flag.String("output-format", "", "type of output override: pretty, csv")
 	logLevel := flag.String("log-level", "", "log level override (debug, info, warn, error)")
 	flag.Parse()
 
@@ -107,7 +107,16 @@ func main() {
 		_ = logger.Sync()
 	}()
 
-	err = validation.ValidateOutputFormat(*outputFormat)
+	// Determine output format (CLI override takes precedence over config)
+	outputFormat := conf.Output.Format
+	if *outputFormatFlag != "" {
+		outputFormat = *outputFormatFlag
+	}
+	if outputFormat == "" {
+		outputFormat = constants.OutputFormatPretty // Default to pretty format
+	}
+
+	err = validation.ValidateOutputFormat(outputFormat)
 	if err != nil {
 		logger.Fatal(err.Error(),
 			zap.String("op", "main"),
@@ -150,7 +159,7 @@ func main() {
 	}
 
 	// Handle output.
-	switch *outputFormat {
+	switch outputFormat {
 	case constants.OutputFormatPretty:
 		output.PrettyFormat(results)
 	case constants.OutputFormatCSV:

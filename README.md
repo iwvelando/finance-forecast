@@ -14,7 +14,7 @@ finance-forecast --config=config.yaml.example --output-format=csv
 
 ### Options
 - `--config`: Path to YAML config file (required)
-- `--output-format`: `pretty` (default) or `csv`
+- `--output-format`: Override output format: `pretty` (default) or `csv`
 - `--log-level`: Override logging level
 
 ## Key Concepts
@@ -29,17 +29,20 @@ finance-forecast --config=config.yaml.example --output-format=csv
   - Refunded when loan is paid early (except December)
   - Extrapolated to annual expense if asset not sold following maturity
 
-## Logging Configuration
+## Logging and Output Configuration
 
 Configure in YAML:
 ```yaml
 logging:
   level: info        # debug, info, warn, error
   format: console    # console or json
-  output_file: path  # optional log file
+  outputFile: path   # optional log file
+
+output:
+  format: pretty     # pretty or csv
 ```
 
-Run with override:
+Run with overrides:
 ```bash
-./finance-forecast --log-level debug --config config.yaml
+./finance-forecast --log-level debug --output-format csv --config config.yaml
 ```

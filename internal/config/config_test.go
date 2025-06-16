@@ -97,6 +97,9 @@ func TestLoadConfigurationExample(t *testing.T) {
 	if config.Logging.Format == "" {
 		t.Log("No logging format specified in config, will use default")
 	}
+	if config.Output.Format == "" {
+		t.Log("No output format specified in config, will use default")
+	}
 
 	// Only test that the config loaded, don't process it further
 	// to avoid triggering loan processing with debug output

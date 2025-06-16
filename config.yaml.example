@@ -7,7 +7,11 @@ logging:
   level: info        # Options: debug, info, warn, error (default: info)
   format: json       # Options: console (human-readable) or json (structured)
   # (default: json)
-  outputFile: forecast.log  # Optional: log to file instead of stdout
+  # outputFile: forecast.log  # Optional: log to file instead of stdout
+
+# Output configuration (optional)
+output:
+  format: pretty      # Options: pretty (default) or csv
 
 # common events and loans are shared among all scenarios you are tracking.
 common:
