@@ -32,7 +32,7 @@ func NewProcessor() *Processor {
 }
 
 // ValidateConfiguration validates the configuration and returns warnings
-func (p *Processor) ValidateConfiguration(deathDate string, commonEvents []EventInfo, commonLoans []LoanInfo, scenarios []ScenarioInfo) []string {
+func (p *Processor) ValidateConfiguration(deathDate string, commonEvents []EventInfo, scenarios []ScenarioInfo) []string {
 	var warnings []string
 
 	// Basic validation - if no death date provided, return empty warnings

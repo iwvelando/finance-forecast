@@ -59,24 +59,24 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			commonLoans := adapters.LoansToFinanceLoans(conf.Common.Loans)
 
 			// Process scenario events
-			scenarioChanges, err := forecastEngine.ProcessMonthlyChanges(date, scenarioEvents, nil, config.DateTimeLayout)
-			if err != nil {
-				return results, err
+			scenarioChanges, scenarioErr := forecastEngine.ProcessMonthlyChanges(date, scenarioEvents, nil, config.DateTimeLayout)
+			if scenarioErr != nil {
+				return results, scenarioErr
 			}
 
 			// Process common events
-			commonChanges, err := forecastEngine.ProcessMonthlyChanges(date, commonEvents, nil, config.DateTimeLayout)
-			if err != nil {
-				return results, err
+			commonChanges, commonErr := forecastEngine.ProcessMonthlyChanges(date, commonEvents, nil, config.DateTimeLayout)
+			if commonErr != nil {
+				return results, commonErr
 			}
 
 			// Check for early payoff thresholds
 			projectedBalance := result.Data[previousDate] + scenarioChanges + commonChanges
 
 			for j := range conf.Scenarios[i].Loans {
-				note, err := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(date, conf.Common.DeathDate, projectedBalance)
-				if err != nil {
-					return results, err
+				note, payoffErr := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(date, conf.Common.DeathDate, projectedBalance)
+				if payoffErr != nil {
+					return results, payoffErr
 				}
 				if note != "" {
 					result.Notes[date] = append(result.Notes[date], note)
@@ -84,9 +84,9 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			}
 
 			for j := range conf.Common.Loans {
-				note, err := conf.Common.Loans[j].CheckEarlyPayoffThreshold(date, conf.Common.DeathDate, projectedBalance)
-				if err != nil {
-					return results, err
+				note, payoffErr := conf.Common.Loans[j].CheckEarlyPayoffThreshold(date, conf.Common.DeathDate, projectedBalance)
+				if payoffErr != nil {
+					return results, payoffErr
 				}
 				if note != "" {
 					result.Notes[date] = append(result.Notes[date], note)
@@ -94,14 +94,14 @@ func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, err
 			}
 
 			// Process loan payments
-			scenarioLoansChanges, err := forecastEngine.ProcessMonthlyChanges(date, nil, scenarioLoans, config.DateTimeLayout)
-			if err != nil {
-				return results, err
+			scenarioLoansChanges, scenarioLoansErr := forecastEngine.ProcessMonthlyChanges(date, nil, scenarioLoans, config.DateTimeLayout)
+			if scenarioLoansErr != nil {
+				return results, scenarioLoansErr
 			}
 
-			commonLoansChanges, err := forecastEngine.ProcessMonthlyChanges(date, nil, commonLoans, config.DateTimeLayout)
-			if err != nil {
-				return results, err
+			commonLoansChanges, commonLoansErr := forecastEngine.ProcessMonthlyChanges(date, nil, commonLoans, config.DateTimeLayout)
+			if commonLoansErr != nil {
+				return results, commonLoansErr
 			}
 
 			// Update the balance

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/iwvelando/finance-forecast/pkg/configprocessor"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"github.com/spf13/viper"
@@ -176,37 +177,35 @@ func (event *Event) FormDateList(conf Configuration) error {
 
 // ValidateConfiguration performs general validation of the configuration and returns warnings
 func (c *Configuration) ValidateConfiguration() []string {
-	var warnings []string
-
-	// Validate common events
+	// Convert config structs to configprocessor format
+	var commonEvents []configprocessor.EventInfo
 	for _, event := range c.Common.Events {
-		if event.StartDate >= c.Common.DeathDate {
-			warnings = append(warnings, "Event '"+event.Name+"' starts at or after death date")
-		}
-		if event.EndDate != "" && event.EndDate > c.Common.DeathDate {
-			warnings = append(warnings, "Event '"+event.Name+"' ends after death date")
-		}
+		commonEvents = append(commonEvents, configprocessor.EventInfo{
+			Name:      event.Name,
+			StartDate: event.StartDate,
+			EndDate:   event.EndDate,
+		})
 	}
 
-	// Validate scenarios
+	var scenarios []configprocessor.ScenarioInfo
 	for _, scenario := range c.Scenarios {
-		if !scenario.Active {
-			continue
-		}
-
-		// Validate scenario events
+		var scenarioEvents []configprocessor.EventInfo
 		for _, event := range scenario.Events {
-			if event.StartDate >= c.Common.DeathDate {
-				warnings = append(warnings, "Event 'Scenario '"+scenario.Name+"' event '"+event.Name+"'' starts at or after death date")
-			}
-			if event.EndDate != "" && event.EndDate > c.Common.DeathDate {
-				warnings = append(warnings, "Event 'Scenario '"+scenario.Name+"' event '"+event.Name+"'' ends after death date")
-			}
+			scenarioEvents = append(scenarioEvents, configprocessor.EventInfo{
+				Name:      event.Name,
+				StartDate: event.StartDate,
+				EndDate:   event.EndDate,
+			})
 		}
+
+		scenarios = append(scenarios, configprocessor.ScenarioInfo{
+			Name:   scenario.Name,
+			Active: scenario.Active,
+			Events: scenarioEvents,
+		})
 	}
 
-	if len(warnings) == 0 {
-		return nil
-	}
-	return warnings
+	// Use the configprocessor for validation
+	processor := configprocessor.NewProcessor()
+	return processor.ValidateConfiguration(c.Common.DeathDate, commonEvents, scenarios)
 }

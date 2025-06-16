@@ -170,7 +170,6 @@ func TestProcessor_ValidateConfiguration(t *testing.T) {
 			warnings := processor.ValidateConfiguration(
 				tt.deathDate,
 				tt.commonEvents,
-				tt.commonLoans,
 				tt.scenarios,
 			)
 
@@ -214,7 +213,7 @@ func TestProcessor_ValidateConfigurationTypes(t *testing.T) {
 		},
 	}
 
-	warnings := processor.ValidateConfiguration("2030-01", events, loans, scenarios)
+	warnings := processor.ValidateConfiguration("2030-01", events, scenarios)
 
 	// Should not crash and should return a warnings slice (can be nil or empty)
 	// This test is about ensuring the method doesn't panic and handles the types correctly
@@ -295,13 +294,13 @@ func TestProcessor_ValidateConfigurationEdgeCases(t *testing.T) {
 	processor := NewProcessor()
 
 	// Test with nil slices
-	warnings := processor.ValidateConfiguration("2030-01", nil, nil, nil)
+	warnings := processor.ValidateConfiguration("2030-01", nil, nil)
 	if len(warnings) != 0 {
 		t.Error("ValidateConfiguration() with nil inputs should return empty warnings slice")
 	}
 
 	// Test with empty death date
-	warnings = processor.ValidateConfiguration("", []EventInfo{}, []LoanInfo{}, []ScenarioInfo{})
+	warnings = processor.ValidateConfiguration("", []EventInfo{}, []ScenarioInfo{})
 	if len(warnings) != 0 {
 		t.Error("ValidateConfiguration() with empty death date should return empty warnings slice")
 	}
@@ -313,7 +312,7 @@ func TestProcessor_ValidateConfigurationEdgeCases(t *testing.T) {
 		{Name: "Active2", Active: true, Loans: []LoanInfo{{StartDate: "2025-01", Term: 120}}},
 	}
 
-	warnings = processor.ValidateConfiguration("2030-01", []EventInfo{}, []LoanInfo{}, scenarios)
+	warnings = processor.ValidateConfiguration("2030-01", []EventInfo{}, scenarios)
 
 	// Should get warnings from active scenarios only
 	activeWarnings := 0
