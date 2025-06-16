@@ -281,6 +281,26 @@ func TestEventFormDateList(t *testing.T) {
 			expectCount: 12, // From 2025-01 to 2025-12
 			expectError: false,
 		},
+		{
+			name: "Event with zero frequency (should error)",
+			event: Event{
+				StartDate: "2025-01",
+				EndDate:   "2025-12",
+				Frequency: 0,
+			},
+			expectCount: 0,
+			expectError: true,
+		},
+		{
+			name: "Event with negative frequency (should error)",
+			event: Event{
+				StartDate: "2025-01",
+				EndDate:   "2025-12",
+				Frequency: -1,
+			},
+			expectCount: 0,
+			expectError: true,
+		},
 	}
 
 	for _, tt := range tests {

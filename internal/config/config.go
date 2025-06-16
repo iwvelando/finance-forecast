@@ -163,6 +163,11 @@ func (event *Event) FormDateList(conf Configuration) error {
 // FormDateListWithFixedTime handles the date to time.Time parsing for one given event
 // with injectable fixed time for testing.
 func (event *Event) FormDateListWithFixedTime(conf Configuration, fixedTime time.Time) error {
+	// Validate frequency to prevent infinite loops
+	if event.Frequency <= 0 {
+		return fmt.Errorf("event frequency must be greater than zero, got %d", event.Frequency)
+	}
+
 	dateList := make([]time.Time, 1)
 	var startDateT time.Time
 	var err error
