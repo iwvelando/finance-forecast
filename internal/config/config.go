@@ -24,9 +24,9 @@ type Configuration struct {
 
 // LoggingConfig holds logging configuration options
 type LoggingConfig struct {
-	Level      string `yaml:"level,omitempty"`       // debug, info, warn, error
-	Format     string `yaml:"format,omitempty"`      // json, console
-	OutputFile string `yaml:"output_file,omitempty"` // optional file output
+	Level      string `yaml:"level,omitempty"`      // debug, info, warn, error
+	Format     string `yaml:"format,omitempty"`     // json, console
+	OutputFile string `yaml:"outputFile,omitempty"` // optional file output
 }
 
 // Common holds the shared parameters, events, and loans between all scenarios.

@@ -1,15 +1,15 @@
 # Finance Forecast
 
-A tool to simulate and forecast financial scenarios based on defined events and loans.
-
 ## Purpose
 
-Finance Forecast helps you evaluate different financial scenarios by simulating events (income, spending, loans) over time.
+Finance Forecast is a simple tool to read in a config file that outlines various financial events (i.e. anything related to income or spending, loans, etc) and associated dates and then run simulations on one or more scenarios to see how these turn out. The more specific the events are the more accurate the simulation should be. Output defaults to printing to the console in a pretty format, but CSV format for easy import to other software may also be specified.
+
+The general goal is to help provide users with a reasonable best-guess guide for financial decisions. By expressing different choices in different scenarios and then running the simulation the user can see how things generally would out over the long-term.
 
 ## Usage
 
 ```
-finance-forecast --config=./config.yaml --output-format=csv
+finance-forecast --config=config.yaml.example --output-format=csv
 ```
 
 ### Options

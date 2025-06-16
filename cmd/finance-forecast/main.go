@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
@@ -60,6 +62,20 @@ func initializeLogger(loggingConfig config.LoggingConfig, logLevelOverride strin
 
 	// Configure output file if specified
 	if loggingConfig.OutputFile != "" {
+		// Ensure the directory exists
+		if dir := filepath.Dir(loggingConfig.OutputFile); dir != "." {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return nil, fmt.Errorf("failed to create log directory %s: %v", dir, err)
+			}
+		}
+
+		// Test if we can create/write to the file
+		if file, err := os.OpenFile(loggingConfig.OutputFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err != nil {
+			return nil, fmt.Errorf("failed to open log file %s: %v", loggingConfig.OutputFile, err)
+		} else {
+			_ = file.Close()
+		}
+
 		config.OutputPaths = []string{loggingConfig.OutputFile}
 		config.ErrorOutputPaths = []string{loggingConfig.OutputFile}
 	}
