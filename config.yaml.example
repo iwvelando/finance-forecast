@@ -1,3 +1,22 @@
+---
+# Example Configuration for Finance Forecast
+# Copy this file to config.yaml and modify as needed
+
+# Optional: Set a specific start date for the simulation (YYYY-MM format)
+# If not specified, the simulation will start from the current month
+# startDate: 2025-01
+
+# Logging configuration (optional)
+logging:
+  level: info        # Options: debug, info, warn, error (default: info)
+  format: json       # Options: console (human-readable) or json (structured)
+  # (default: json)
+  # outputFile: forecast.log  # Optional: log to file instead of stdout
+
+# Output configuration (optional)
+output:
+  format: pretty      # Options: pretty (default) or csv
+
 # common events and loans are shared among all scenarios you are tracking.
 common:
   # startingValue: this is the expected starting balance as of the end of this

@@ -1,0 +1,141 @@
+# Test configuration file for finance-forecast tests
+# This file contains the same structure as config.yaml.example but optimized for testing
+# DO NOT modify this file unless you understand the impact on test baseline values
+
+# Optional: Set a specific start date for the simulation (YYYY-MM format)
+# startDate: 2025-01
+
+common:
+  startingValue: 30000.00
+  deathDate: 2090-01
+  events:
+    - name: Social security
+      amount: 1000.00
+      frequency: 1
+      startDate: 2050-01
+    - name: Service quarterly bill
+      amount: -10.00
+      frequency: 3
+      startDate: 2020-07
+    - name: Other service monthly bill
+      amount: -35.00
+      frequency: 1
+  loans:
+    - name: Auto loan
+      principal: 30000.00
+      downPayment: 5000.00
+      interestRate: 3.1
+      term: 72
+      startDate: 2020-01
+
+scenarios:
+  - name: current path
+    active: true
+    events:
+      - name: Income
+        amount: 1234.56
+        frequency: 1
+        endDate: 2050-01
+      - name: Bonus
+        amount: 7891.23
+        frequency: 12
+        startDate: 2020-12
+        endDate: 2020-12
+    loans:
+      - name: 1234 Street Address
+        principal: 150000.00
+        downPayment: 10000.00
+        interestRate: 3.75
+        term: 360
+        startDate: 2018-01
+        escrow: 500.00
+        mortgageInsurance: 50.00
+        mortgageInsuranceCutoff: 78.00
+        earlyPayoffThreshold: 5000.00
+
+  - name: new home purchase
+    active: true
+    events:
+      - name: Income
+        amount: 1234.56
+        frequency: 1
+        endDate: 2020-09
+      - name: Income (new job)
+        amount: 2345.67
+        frequency: 1
+        startDate: 2020-10
+        endDate: 2050-01
+    loans:
+      - name: 1234 Street Address
+        principal: 150000.00
+        downPayment: 10000.00
+        interestRate: 3.75
+        term: 360
+        startDate: 2018-01
+        escrow: 500.00
+        mortgageInsurance: 50.00
+        mortgageInsuranceCutoff: 78.00
+        earlyPayoffDate: 2022-06
+        sellProperty: true
+        sellPrice: 153000.00
+        sellCostsNet: 9500.00
+      - name: 5678 Street Address
+        principal: 200000.00
+        downPayment: 40000.00
+        interestRate: 2.75
+        term: 360
+        startDate: 2022-06
+        escrow: 600.00
+        earlyPayoffThreshold: 5000.00
+
+  - name: new home purchase with extra principal payments
+    active: true
+    events:
+      - name: Income
+        amount: 1234.56
+        frequency: 1
+        endDate: 2020-09
+      - name: Income (new job)
+        amount: 2345.67
+        frequency: 1
+        startDate: 2020-10
+        endDate: 2050-01
+    loans:
+      - name: 1234 Street Address
+        principal: 150000.00
+        downPayment: 10000.00
+        interestRate: 3.75
+        term: 360
+        startDate: 2018-01
+        escrow: 500.00
+        mortgageInsurance: 50.00
+        mortgageInsuranceCutoff: 78.00
+        earlyPayoffDate: 2022-06
+        sellProperty: true
+        sellPrice: 153000.00
+        sellCostsNet: 9500.00
+      - name: 5678 Street Address
+        principal: 200000.00
+        downPayment: 40000.00
+        interestRate: 2.75
+        term: 360
+        startDate: 2022-06
+        escrow: 600.00
+        earlyPayoffThreshold: 5000.00
+        extraPrincipalPayments:
+          - amount: 100.00
+            frequency: 1
+          - name: large one-off payment
+            amount: 19000.00
+            frequency: 1
+            startDate: 2023-06
+            endDate: 2023-06
+
+# Logging configuration for tests
+logging:
+  level: info        # Use info level for tests to reduce noise
+  format: json       # Use JSON format for consistent test output
+
+# Output configuration for tests
+output:
+  format: pretty     # Use pretty format for human-readable test output
