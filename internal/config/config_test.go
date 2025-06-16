@@ -3,6 +3,7 @@ package config
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"github.com/iwvelando/finance-forecast/pkg/mathutil"
@@ -159,9 +160,13 @@ func TestParseDateLists(t *testing.T) {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
 
-	err = config.ParseDateLists()
+	// Use a fixed time for deterministic testing
+	fixedTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	// Process events with fixed time for deterministic results
+	err = config.ParseDateListsWithFixedTime(fixedTime)
 	if err != nil {
-		t.Errorf("ParseDateLists() error = %v", err)
+		t.Fatalf("ParseDateListsWithFixedTime() error = %v", err)
 	}
 
 	// Test that DateLists are populated
@@ -229,14 +234,16 @@ func TestEventFormDateList(t *testing.T) {
 				EndDate:   "2025-12",
 				Frequency: 1,
 			},
-			expectCount: 0, // We can't predict exactly since it uses current time
+			expectCount: 12, // From 2025-01 to 2025-12
 			expectError: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.event.FormDateList(config)
+			// Use a fixed current time for deterministic testing
+			fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+			err := tt.event.FormDateListWithFixedTime(config, fixedTime)
 			if tt.expectError && err == nil {
 				t.Errorf("FormDateList() expected error but got none")
 				return

@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -189,7 +190,7 @@ func TestLoanWithExtraPrincipal(t *testing.T) {
 		EndDate:   "2025-06",
 		Frequency: 1,
 	}
-	err := extraPaymentEvent.FormDateList(config)
+	err := extraPaymentEvent.FormDateListWithFixedTime(config, time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("FormDateList() error = %v", err)
 	}
@@ -247,12 +248,13 @@ func TestExtraPrincipal(t *testing.T) {
 		Frequency: 1,
 	}
 
-	// Form date lists
-	err := monthlyExtra.FormDateList(config)
+	// Form date lists with fixed time for deterministic testing
+	fixedTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+	err := monthlyExtra.FormDateListWithFixedTime(config, fixedTime)
 	if err != nil {
 		t.Fatalf("FormDateList() error = %v", err)
 	}
-	err = oneTimeExtra.FormDateList(config)
+	err = oneTimeExtra.FormDateListWithFixedTime(config, fixedTime)
 	if err != nil {
 		t.Fatalf("FormDateList() error = %v", err)
 	}

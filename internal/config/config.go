@@ -86,10 +86,15 @@ func LoadConfiguration(configPath string) (*Configuration, error) {
 // ParseDateLists looks at every date provided in the configuration and
 // parses it into a time.Time which is stored back into an Event.DateList.
 func (conf *Configuration) ParseDateLists() error {
+	return conf.ParseDateListsWithFixedTime(time.Now())
+}
+
+// ParseDateListsWithFixedTime parses all date lists in the configuration using a fixed time
+func (conf *Configuration) ParseDateListsWithFixedTime(fixedTime time.Time) error {
 	// First handle the parsing for all Events in Scenarios.
 	for i, scenario := range conf.Scenarios {
 		for j := range scenario.Events {
-			err := conf.Scenarios[i].Events[j].FormDateList(*conf)
+			err := conf.Scenarios[i].Events[j].FormDateListWithFixedTime(*conf, fixedTime)
 			if err != nil {
 				return err
 			}
@@ -97,7 +102,7 @@ func (conf *Configuration) ParseDateLists() error {
 		// Check for extra principal payments within loans.
 		for j, loan := range scenario.Loans {
 			for k := range loan.ExtraPrincipalPayments {
-				err := conf.Scenarios[i].Loans[j].ExtraPrincipalPayments[k].FormDateList(*conf)
+				err := conf.Scenarios[i].Loans[j].ExtraPrincipalPayments[k].FormDateListWithFixedTime(*conf, fixedTime)
 				if err != nil {
 					return err
 				}
@@ -107,7 +112,7 @@ func (conf *Configuration) ParseDateLists() error {
 
 	// Next handle the parsing for the Common Events.
 	for i := range conf.Common.Events {
-		err := conf.Common.Events[i].FormDateList(*conf)
+		err := conf.Common.Events[i].FormDateListWithFixedTime(*conf, fixedTime)
 		if err != nil {
 			return err
 		}
@@ -116,7 +121,7 @@ func (conf *Configuration) ParseDateLists() error {
 	// Check for extra principal payments for common loans.
 	for i, loan := range conf.Common.Loans {
 		for j := range loan.ExtraPrincipalPayments {
-			err := conf.Common.Loans[i].ExtraPrincipalPayments[j].FormDateList(*conf)
+			err := conf.Common.Loans[i].ExtraPrincipalPayments[j].FormDateListWithFixedTime(*conf, fixedTime)
 			if err != nil {
 				return err
 			}
@@ -129,14 +134,20 @@ func (conf *Configuration) ParseDateLists() error {
 // FormDateList handles the date to time.Time parsing for one given event.
 // This utilizes the datetime package for parsing and date manipulation.
 func (event *Event) FormDateList(conf Configuration) error {
+	return event.FormDateListWithFixedTime(conf, time.Now())
+}
+
+// FormDateListWithFixedTime handles the date to time.Time parsing for one given event
+// with injectable fixed time for testing.
+func (event *Event) FormDateListWithFixedTime(conf Configuration, fixedTime time.Time) error {
 	dateList := make([]time.Time, 1)
 	var startDateT time.Time
 	var err error
 
-	// Unspecified startDate goes to the current time.
+	// Unspecified startDate goes to the fixed time.
 	if event.StartDate == "" {
 		// Use datetime package for consistent date handling
-		startDateT = datetime.MustParseTime(DateTimeLayout, time.Now().Format(DateTimeLayout))
+		startDateT = datetime.MustParseTime(DateTimeLayout, fixedTime.Format(DateTimeLayout))
 	} else {
 		startDateT, err = time.Parse(DateTimeLayout, event.StartDate)
 		if err != nil {

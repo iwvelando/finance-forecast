@@ -22,12 +22,17 @@ type Forecast struct {
 
 // GetForecast processes the Forecasts for all Scenarios.
 func GetForecast(logger *zap.Logger, conf config.Configuration) ([]Forecast, error) {
+	return GetForecastWithFixedTime(logger, conf, time.Now())
+}
+
+// GetForecastWithFixedTime generates forecasts using a fixed current time for deterministic testing
+func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fixedTime time.Time) ([]Forecast, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 
 	var results []Forecast
-	startDate := time.Now().Format(config.DateTimeLayout)
+	startDate := fixedTime.Format(config.DateTimeLayout)
 	for i, scenario := range conf.Scenarios {
 		if !scenario.Active {
 			logger.Debug(fmt.Sprintf("skipping scenario %s because it is inactive", scenario.Name),

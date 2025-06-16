@@ -38,11 +38,16 @@ func (p *Processor) ParseDateLists(events []*Event, deathDate string) error {
 // FormDateList generates a list of dates for this event based on its frequency
 // It takes only deathDate as parameter and uses current time internally
 func (e *Event) FormDateList(deathDate string) error {
-	// Use current time if start date is not specified
-	currentTime := time.Now().Format("2006-01")
+	return e.FormDateListWithFixedTime(deathDate, time.Now())
+}
+
+// FormDateListWithFixedTime generates a list of dates for this event with injectable fixed time
+func (e *Event) FormDateListWithFixedTime(deathDate string, fixedTime time.Time) error {
+	// Use fixed time if start date is not specified
+	fixedTimeStr := fixedTime.Format("2006-01")
 	startDate := e.StartDate
 	if startDate == "" {
-		startDate = currentTime
+		startDate = fixedTimeStr
 	}
 
 	// Set default end date to death date if not specified

@@ -167,6 +167,8 @@ func TestGetForecast(t *testing.T) {
 	}
 
 	// Set up date lists manually for testing
+	fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
 	conf.Common.Events[0].DateList = []time.Time{
 		datetime.MustParseTime(config.DateTimeLayout, "2025-06"),
 		datetime.MustParseTime(config.DateTimeLayout, "2025-07"),
@@ -177,7 +179,7 @@ func TestGetForecast(t *testing.T) {
 		datetime.MustParseTime(config.DateTimeLayout, "2025-07"),
 	}
 
-	results, err := GetForecast(logger, conf)
+	results, err := GetForecastWithFixedTime(logger, conf, fixedTime)
 	if err != nil {
 		t.Fatalf("GetForecast() error = %v", err)
 	}
@@ -197,8 +199,8 @@ func TestGetForecast(t *testing.T) {
 		t.Errorf("Expected forecast data, got empty map")
 	}
 
-	// Check starting value
-	startDate := time.Now().Format(config.DateTimeLayout)
+	// Check starting value at the fixed time
+	startDate := fixedTime.Format(config.DateTimeLayout)
 	if result.Data[startDate] != 10000.0 {
 		t.Errorf("Expected starting value 10000.0, got %.2f", result.Data[startDate])
 	}
@@ -224,7 +226,10 @@ func TestGetForecastInactiveScenario(t *testing.T) {
 		},
 	}
 
-	results, err := GetForecast(logger, conf)
+	// Use a fixed time for deterministic testing
+	fixedTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	results, err := GetForecastWithFixedTime(logger, conf, fixedTime)
 	if err != nil {
 		t.Fatalf("GetForecast() error = %v", err)
 	}
@@ -250,9 +255,23 @@ func TestGetForecastRealistic(t *testing.T) {
 		t.Fatalf("LoadConfiguration() error = %v", err)
 	}
 
-	err = conf.ParseDateLists()
-	if err != nil {
-		t.Fatalf("ParseDateLists() error = %v", err)
+	// Use a fixed time for deterministic testing
+	fixedTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	// Parse date lists with fixed time
+	for i, scenario := range conf.Scenarios {
+		for j := range scenario.Events {
+			err := conf.Scenarios[i].Events[j].FormDateListWithFixedTime(*conf, fixedTime)
+			if err != nil {
+				t.Fatalf("FormDateListWithFixedTime() error = %v", err)
+			}
+		}
+	}
+	for i := range conf.Common.Events {
+		err := conf.Common.Events[i].FormDateListWithFixedTime(*conf, fixedTime)
+		if err != nil {
+			t.Fatalf("FormDateListWithFixedTime() error = %v", err)
+		}
 	}
 
 	err = conf.ProcessLoans(logger)
@@ -260,7 +279,7 @@ func TestGetForecastRealistic(t *testing.T) {
 		t.Fatalf("ProcessLoans() error = %v", err)
 	}
 
-	results, err := GetForecast(logger, *conf)
+	results, err := GetForecastWithFixedTime(logger, *conf, fixedTime)
 	if err != nil {
 		t.Fatalf("GetForecast() error = %v", err)
 	}
@@ -285,8 +304,8 @@ func TestGetForecastRealistic(t *testing.T) {
 			t.Errorf("Scenario %s has no forecast data", expected)
 		}
 
-		// Verify starting value
-		startDate := time.Now().Format(config.DateTimeLayout)
+		// Verify starting value using fixed date rather than time.Now()
+		startDate := fixedTime.Format(config.DateTimeLayout)
 		if results[i].Data[startDate] != 30000.0 {
 			t.Errorf("Scenario %s: expected starting value 30000.0, got %.2f",
 				expected, results[i].Data[startDate])

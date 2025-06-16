@@ -69,7 +69,7 @@ func TestEvent_FormDateList(t *testing.T) {
 				Frequency: 1,
 			},
 			deathDate:   "2030-01",
-			expectCount: 0, // Can't predict exact count since it uses current time
+			expectCount: 12, // From 2025-01 to 2025-12 with fixed time
 			expectError: false,
 		},
 		{
@@ -123,7 +123,16 @@ func TestEvent_FormDateList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.event.FormDateList(tt.deathDate)
+			// Use a fixed current time for deterministic testing
+			fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+			// Use FormDateListWithFixedTime if event has no start date, otherwise use FormDateList
+			var err error
+			if tt.event.StartDate == "" {
+				err = tt.event.FormDateListWithFixedTime(tt.deathDate, fixedTime)
+			} else {
+				err = tt.event.FormDateList(tt.deathDate)
+			}
 
 			if tt.expectError {
 				if err == nil {

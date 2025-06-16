@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"testing"
+	"time"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
@@ -187,14 +188,54 @@ func TestEventConfigAdapter_FormDateListEmptyStartDate(t *testing.T) {
 
 	adapter := NewEventConfigAdapter(configEvent)
 
-	err := adapter.FormDateList("2030-01")
+	// Use a fixed time for deterministic testing
+	fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	err := adapter.FormDateListWithFixedTime("2030-01", fixedTime)
 	if err != nil {
-		t.Fatalf("FormDateList() error = %v", err)
+		t.Fatalf("FormDateListWithFixedTime() error = %v", err)
 	}
 
-	// Should have at least one date (using current time as start)
-	if len(configEvent.DateList) == 0 {
-		t.Error("ConfigEvent.DateList should not be empty when using current time as start")
+	// Should have 12 dates from Jan to Dec 2025
+	expectedCount := 12
+	if len(configEvent.DateList) != expectedCount {
+		t.Errorf("Expected %d dates, got %d", expectedCount, len(configEvent.DateList))
+	}
+
+	// Now we can verify the first date is January 2025 since we used a fixed time
+	expectedFirstDate := datetime.MustParseTime(datetime.DateTimeLayout, "2025-01")
+	if !configEvent.DateList[0].Equal(expectedFirstDate) {
+		t.Errorf("First date = %v, expected %v", configEvent.DateList[0], expectedFirstDate)
+	}
+}
+
+func TestEventConfigAdapter_FormDateListEmptyStartDateFixed(t *testing.T) {
+	configEvent := &config.Event{
+		Name:      "No Start Date Event Deterministic",
+		Amount:    100.0,
+		StartDate: "", // No start date - should use current time
+		EndDate:   "2025-12",
+		Frequency: 1,
+	}
+
+	adapter := NewEventConfigAdapter(configEvent)
+
+	// Use a fixed current time for deterministic testing
+	fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	err := adapter.FormDateListWithFixedTime("2030-01", fixedTime)
+	if err != nil {
+		t.Fatalf("FormDateListWithFixedTime() error = %v", err)
+	}
+
+	// Should have 12 dates from Jan to Dec 2025
+	expectedCount := 12
+	if len(configEvent.DateList) != expectedCount {
+		t.Errorf("Expected %d dates, got %d", expectedCount, len(configEvent.DateList))
+	}
+
+	// Verify first date is January 2025
+	expectedFirstDate := datetime.MustParseTime(datetime.DateTimeLayout, "2025-01")
+	if !configEvent.DateList[0].Equal(expectedFirstDate) {
+		t.Errorf("First date = %v, expected %v", configEvent.DateList[0], expectedFirstDate)
 	}
 }
 
