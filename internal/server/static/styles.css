@@ -1,0 +1,226 @@
+:root {
+    color-scheme: light dark;
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background-color: #f4f6fb;
+    color: #1b1f3b;
+    line-height: 1.5;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at top, rgba(52, 120, 246, 0.15), transparent 55%),
+                radial-gradient(circle at bottom, rgba(76, 201, 240, 0.12), transparent 60%);
+}
+
+.container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+}
+
+.hero {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.hero h1 {
+    margin-bottom: 0.5rem;
+    font-size: clamp(2.2rem, 3vw + 1rem, 3rem);
+}
+
+.hero p {
+    margin: 0 auto;
+    max-width: 640px;
+    color: rgba(27, 31, 59, 0.75);
+}
+
+.panel {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    border-radius: 16px;
+    box-shadow: 0 18px 45px -20px rgba(15, 23, 42, 0.4);
+    padding: 1.75rem;
+    margin-bottom: 2rem;
+}
+
+.upload-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.input-label {
+    font-weight: 600;
+}
+
+input[type="file"] {
+    padding: 0.75rem;
+    border-radius: 12px;
+    border: 1px solid rgba(27, 31, 59, 0.15);
+    background: rgba(255, 255, 255, 0.75);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input[type="file"]:focus {
+    outline: none;
+    border-color: rgba(52, 120, 246, 0.8);
+    box-shadow: 0 0 0 4px rgba(52, 120, 246, 0.15);
+}
+
+.form-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+button,
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 999px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+button,
+.button:not(.secondary) {
+    background: linear-gradient(135deg, #3a7bd5, #3a6073);
+    color: #fff;
+    box-shadow: 0 14px 25px -15px rgba(58, 123, 213, 0.8);
+}
+
+.button.secondary {
+    background: rgba(58, 123, 213, 0.12);
+    color: #1b1f3b;
+    border: 1px solid rgba(58, 123, 213, 0.35);
+}
+
+button:hover,
+.button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 30px -17px rgba(58, 123, 213, 0.8);
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.message {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    font-weight: 500;
+    background: rgba(58, 123, 213, 0.12);
+    color: #1b1f3b;
+    border: 1px solid rgba(58, 123, 213, 0.25);
+}
+
+.message.success {
+    background: rgba(72, 187, 120, 0.15);
+    border-color: rgba(72, 187, 120, 0.35);
+    color: #216339;
+}
+
+.message.error {
+    background: rgba(244, 67, 54, 0.15);
+    border-color: rgba(244, 67, 54, 0.35);
+    color: #a02620;
+}
+
+#warnings {
+    margin-top: 1.5rem;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    background: rgba(249, 177, 71, 0.15);
+    color: #8a5200;
+    border: 1px solid rgba(249, 177, 71, 0.35);
+}
+
+.results-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.results-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.muted-text {
+    color: rgba(27, 31, 59, 0.6);
+}
+
+.table-container {
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid rgba(27, 31, 59, 0.1);
+}
+
+#results-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 640px;
+}
+
+#results-table thead {
+    background: rgba(58, 123, 213, 0.12);
+}
+
+#results-table th,
+#results-table td {
+    padding: 0.75rem 0.9rem;
+    border-bottom: 1px solid rgba(27, 31, 59, 0.08);
+    text-align: left;
+    vertical-align: top;
+}
+
+.subhead {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: rgba(27, 31, 59, 0.65);
+}
+
+.amount-cell {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+#results-table tbody tr:nth-child(even) {
+    background: rgba(27, 31, 59, 0.02);
+}
+
+.note-list {
+    margin: 0.25rem 0 0;
+    padding-left: 1.25rem;
+    color: rgba(27, 31, 59, 0.7);
+    font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+    .panel {
+        padding: 1.25rem;
+    }
+
+    .results-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+}

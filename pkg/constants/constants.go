@@ -39,6 +39,18 @@ const (
 
 	// ExampleConfigFile is the example configuration file name
 	ExampleConfigFile = "config.yaml.example"
+
+	// DefaultServerConfigFile is the default server configuration file name
+	DefaultServerConfigFile = "server-config.yaml"
+)
+
+// Server configuration defaults
+const (
+	// DefaultServerAddress is the default HTTP listen address for the web UI
+	DefaultServerAddress = ":8080"
+
+	// DefaultMaxUploadSizeBytes is the default maximum upload size for YAML configs (256 KB)
+	DefaultMaxUploadSizeBytes int64 = 256 * 1024
 )
 
 // Validation constants

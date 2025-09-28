@@ -1,7 +1,9 @@
 package config
 
 import (
+	"bytes"
 	"math"
+	"os"
 	"testing"
 	"time"
 
@@ -40,6 +42,26 @@ func TestLoadConfiguration(t *testing.T) {
 				t.Errorf("LoadConfiguration() returned nil config")
 			}
 		})
+	}
+}
+
+func TestLoadConfigurationFromReader(t *testing.T) {
+	data, err := os.ReadFile("../../test/test_config.yaml")
+	if err != nil {
+		t.Fatalf("failed to read test config: %v", err)
+	}
+
+	cfg, err := LoadConfigurationFromReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("LoadConfigurationFromReader() error = %v", err)
+	}
+
+	if cfg == nil {
+		t.Fatalf("LoadConfigurationFromReader() returned nil config")
+	}
+
+	if len(cfg.Scenarios) == 0 {
+		t.Errorf("expected scenarios to be loaded")
 	}
 }
 

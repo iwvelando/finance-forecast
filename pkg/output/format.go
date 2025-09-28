@@ -77,12 +77,27 @@ func PrettyFormat(results []forecast.Forecast) {
 
 // CsvFormat outputs in comma-separated value format.
 func CsvFormat(results []forecast.Forecast) {
+	lines := buildCsvLines(results)
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+}
+
+// CsvString converts the forecast results into a CSV string using the same format as CsvFormat.
+func CsvString(results []forecast.Forecast) string {
+	lines := buildCsvLines(results)
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// buildCsvLines creates the ordered CSV lines shared by CsvFormat and CsvString.
+func buildCsvLines(results []forecast.Forecast) []string {
 	if len(results) == 0 {
-		fmt.Println("Date,Scenario,Amount,Notes")
-		return
+		return []string{"Date,Scenario,Amount,Notes"}
 	}
 
-	// Create a map to collect all dates across scenarios
 	allDates := make(map[string]bool)
 	for _, scenario := range results {
 		for date := range scenario.Data {
@@ -90,39 +105,37 @@ func CsvFormat(results []forecast.Forecast) {
 		}
 	}
 
-	// Convert to sorted slice
 	var dates []string
 	for date := range allDates {
 		dates = append(dates, date)
 	}
 	sort.Strings(dates)
 
-	// Build header with scenario names
 	header := []string{"\"date\""}
 	for _, scenario := range results {
 		header = append(header, fmt.Sprintf("\"amount (%s)\"", scenario.Name))
 		header = append(header, fmt.Sprintf("\"notes (%s)\"", scenario.Name))
 	}
-	fmt.Println(strings.Join(header, ","))
 
-	// Output data rows
+	lines := []string{strings.Join(header, ",")}
+
 	for _, date := range dates {
 		row := []string{fmt.Sprintf("\"%s\"", date)}
 		for _, scenario := range results {
 			if balance, exists := scenario.Data[date]; exists {
 				row = append(row, fmt.Sprintf("\"%.2f\"", balance))
-
-				// Add notes
 				if notes, hasNotes := scenario.Notes[date]; hasNotes && len(notes) > 0 {
 					row = append(row, fmt.Sprintf("\"%s\"", strings.Join(notes, ",")))
 				} else {
 					row = append(row, "\"\"")
 				}
 			} else {
-				row = append(row, "\"\"") // Empty amount
-				row = append(row, "\"\"") // Empty notes
+				row = append(row, "\"\"")
+				row = append(row, "\"\"")
 			}
 		}
-		fmt.Println(strings.Join(row, ","))
+		lines = append(lines, strings.Join(row, ","))
 	}
+
+	return lines
 }
