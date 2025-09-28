@@ -9,14 +9,16 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"gopkg.in/yaml.v3"
 )
 
 // Config defines runtime parameters for the HTTP server.
 type Config struct {
-	Address         string `yaml:"address"`
-	MaxUploadSize   string `yaml:"maxUploadSize"`
+	Address         string               `yaml:"address"`
+	MaxUploadSize   string               `yaml:"maxUploadSize"`
+	Logging         config.LoggingConfig `yaml:"logging"`
 	uploadSizeBytes int64
 }
 
@@ -26,6 +28,7 @@ func LoadConfig(path string) (*Config, error) {
 	cfg := &Config{
 		Address:         constants.DefaultServerAddress,
 		MaxUploadSize:   fmt.Sprintf("%d", constants.DefaultMaxUploadSizeBytes),
+		Logging:         config.LoggingConfig{},
 		uploadSizeBytes: constants.DefaultMaxUploadSizeBytes,
 	}
 

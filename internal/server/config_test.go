@@ -20,13 +20,16 @@ func TestLoadConfigDefaultsWhenMissing(t *testing.T) {
 	if cfg.UploadSizeBytes() <= 0 {
 		t.Fatalf("expected positive default max upload size, got %d", cfg.UploadSizeBytes())
 	}
+	if cfg.Logging.Level != "" || cfg.Logging.Format != "" || cfg.Logging.OutputFile != "" {
+		t.Fatalf("expected empty logging defaults, got %+v", cfg.Logging)
+	}
 }
 
 func TestLoadConfigOverrides(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server-config.yaml")
 
-	contents := []byte("address: 127.0.0.1:9000\nmaxUploadSize: 2M\n")
+	contents := []byte("address: 127.0.0.1:9000\nmaxUploadSize: 2M\nlogging:\n  level: debug\n  format: console\n  outputFile: /tmp/server.log\n")
 	if err := os.WriteFile(path, contents, 0600); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
 	}
@@ -41,6 +44,15 @@ func TestLoadConfigOverrides(t *testing.T) {
 	}
 	if cfg.UploadSizeBytes() != 2*1024*1024 {
 		t.Fatalf("expected max upload override, got %d", cfg.UploadSizeBytes())
+	}
+	if cfg.Logging.Level != "debug" {
+		t.Fatalf("expected logging level debug, got %s", cfg.Logging.Level)
+	}
+	if cfg.Logging.Format != "console" {
+		t.Fatalf("expected logging format console, got %s", cfg.Logging.Format)
+	}
+	if cfg.Logging.OutputFile != "/tmp/server.log" {
+		t.Fatalf("expected logging outputFile /tmp/server.log, got %s", cfg.Logging.OutputFile)
 	}
 }
 

@@ -26,12 +26,12 @@ When running in server mode:
 - Upload a YAML configuration to run the simulation
 - Review the rendered results table and download the generated CSV without touching the CLI
 - Provide `--config` if you want to reuse logging settings from a file
-- Adjust runtime settings (address, upload limits) using `server-config.yaml` (copy from `server-config.yaml.example`). Upload limits accept human-friendly units like `256K`, `10M`, or `1G`. CLI flags such as `--addr`, `--max-upload`, and `--server-config` override or choose the configuration file when needed.
+- Adjust runtime settings (address, upload limits, logging) using `server-config.yaml` (copy from `server-config.yaml.example`). Upload limits accept human-friendly units like `256K`, `10M`, or `1G`. Configure structured logging with `logging.level`, `logging.format`, and `logging.outputFile`. CLI flags such as `--addr`, `--max-upload`, and `--server-config` override or choose the configuration file when needed, while `--log-level` still wins over file settings.
 
 ### Options
 - `--config`: Path to YAML config file (required for CLI; optional for server logging defaults)
 - `--output-format`: Override output format: `pretty` (default) or `csv`
-- `--log-level`: Override logging level
+- `--log-level`: Override logging level (takes precedence over config and server-config settings)
 - `--serve`: Start the web UI server instead of running the CLI simulation
 - `--addr`: Bind address for the web UI server (overrides server config)
 - `--server-config`: Path to the server configuration file (default `server-config.yaml`)
