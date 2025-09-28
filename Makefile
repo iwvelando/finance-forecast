@@ -124,9 +124,9 @@ lint:
 
 .PHONY: yamllint
 yamllint:
-	@echo "Running yamllint on config.yaml.example..."
+	@echo "Running yamllint on example YAML configs..."
 	@if command -v yamllint >/dev/null 2>&1; then \
-		yamllint config.yaml.example; \
+		yamllint config.yaml.example server-config.yaml.example; \
 	else \
 		echo "yamllint not found, skipping YAML lint check"; \
 		echo "See dev-setup target for installation instructions"; \
