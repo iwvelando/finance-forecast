@@ -1,3 +1,4 @@
+---
 # Server configuration for finance-forecast web mode
 # Copy to server-config.yaml and adjust as needed.
 address: ":8080"
