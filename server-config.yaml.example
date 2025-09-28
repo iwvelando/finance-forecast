@@ -3,3 +3,10 @@
 # Copy to server-config.yaml and adjust as needed.
 address: ":8080"
 maxUploadSize: 256K
+logging:
+  # level options: debug, info, warn, error
+  level: info
+  # format options: json, console
+  format: json
+  # optional file path for structured logs; leave blank to log to stdout
+  outputFile: ""

@@ -196,21 +196,10 @@ func runServer(addr string, maxUpload string, serverConfigPath string, configPat
 		}
 	}
 
-	logger, err := initializeLogger(loggingConf, logLevel)
-	if err != nil {
-		fmt.Printf("{\"op\": \"serve\", \"level\": \"fatal\", \"msg\": \"failed to initialize logger\", \"error\": \"%v\"}\n", err)
-		return
-	}
-	defer func() {
-		_ = logger.Sync()
-	}()
-
 	srvCfg, err := server.LoadConfig(serverConfigPath)
 	if err != nil {
-		logger.Fatal("failed to load server configuration",
-			zap.String("op", "serve"),
-			zap.Error(err),
-		)
+		fmt.Printf("{\"op\": \"serve\", \"level\": \"fatal\", \"msg\": \"failed to load server configuration at %s\", \"error\": \"%v\"}\n", serverConfigPath, err)
+		return
 	}
 
 	if addr != "" {
@@ -219,14 +208,30 @@ func runServer(addr string, maxUpload string, serverConfigPath string, configPat
 	if maxUpload != "" {
 		size, err := server.ParseSize(maxUpload)
 		if err != nil {
-			logger.Fatal("invalid max-upload value",
-				zap.String("op", "serve"),
-				zap.String("value", maxUpload),
-				zap.Error(err),
-			)
+			fmt.Printf("{\"op\": \"serve\", \"level\": \"fatal\", \"msg\": \"invalid max-upload value\", \"value\": \"%s\", \"error\": \"%v\"}\n", maxUpload, err)
+			return
 		}
 		srvCfg.SetUploadSizeBytes(size)
 	}
+
+	if srvCfg.Logging.Level != "" {
+		loggingConf.Level = srvCfg.Logging.Level
+	}
+	if srvCfg.Logging.Format != "" {
+		loggingConf.Format = srvCfg.Logging.Format
+	}
+	if srvCfg.Logging.OutputFile != "" {
+		loggingConf.OutputFile = srvCfg.Logging.OutputFile
+	}
+
+	logger, err := initializeLogger(loggingConf, logLevel)
+	if err != nil {
+		fmt.Printf("{\"op\": \"serve\", \"level\": \"fatal\", \"msg\": \"failed to initialize logger\", \"error\": \"%v\"}\n", err)
+		return
+	}
+	defer func() {
+		_ = logger.Sync()
+	}()
 
 	logger.Info("starting finance-forecast web server",
 		zap.String("addr", srvCfg.Address),
