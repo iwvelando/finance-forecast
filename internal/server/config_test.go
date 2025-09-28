@@ -29,7 +29,13 @@ func TestLoadConfigOverrides(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server-config.yaml")
 
-	contents := []byte("address: 127.0.0.1:9000\nmaxUploadSize: 2M\nlogging:\n  level: debug\n  format: console\n  outputFile: /tmp/server.log\n")
+	contents := []byte(`address: 127.0.0.1:9000
+maxUploadSize: 2M
+logging:
+  level: debug
+  format: console
+  outputFile: /tmp/server.log
+`)
 	if err := os.WriteFile(path, contents, 0600); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
 	}
