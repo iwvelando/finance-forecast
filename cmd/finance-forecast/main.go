@@ -1,13 +1,16 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	"github.com/iwvelando/finance-forecast/internal/server"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/output"
 	"github.com/iwvelando/finance-forecast/pkg/validation"
@@ -88,7 +91,16 @@ func main() {
 	configLocation := flag.String("config", constants.DefaultConfigFile, "path to configuration file")
 	outputFormatFlag := flag.String("output-format", "", "type of output override: pretty, csv")
 	logLevel := flag.String("log-level", "", "log level override (debug, info, warn, error)")
+	serve := flag.Bool("serve", false, "start the web UI server")
+	addr := flag.String("addr", "", "bind address for the web server (overrides server config)")
+	maxUpload := flag.String("max-upload", "", "maximum upload size (e.g. 256K, 10M) overriding server config")
+	serverConfigPath := flag.String("server-config", constants.DefaultServerConfigFile, "path to server configuration file")
 	flag.Parse()
+
+	if *serve {
+		runServer(*addr, *maxUpload, *serverConfigPath, *configLocation, *logLevel)
+		return
+	}
 
 	// Load the config file to get logging configuration
 	conf, err := config.LoadConfiguration(*configLocation)
@@ -166,4 +178,66 @@ func main() {
 		output.CsvFormat(results)
 	}
 
+}
+
+func runServer(addr string, maxUpload string, serverConfigPath string, configPath string, logLevel string) {
+	var loggingConf config.LoggingConfig
+	if configPath != "" {
+		if _, err := os.Stat(configPath); err == nil {
+			cfg, err := config.LoadConfiguration(configPath)
+			if err != nil {
+				fmt.Printf("{\"op\": \"serve\", \"level\": \"fatal\", \"msg\": \"failed to load configuration at %s\", \"error\": \"%v\"}\n", configPath, err)
+				return
+			}
+			loggingConf = cfg.Logging
+		} else if !errors.Is(err, os.ErrNotExist) {
+			fmt.Printf("{\"op\": \"serve\", \"level\": \"fatal\", \"msg\": \"unable to access configuration at %s\", \"error\": \"%v\"}\n", configPath, err)
+			return
+		}
+	}
+
+	logger, err := initializeLogger(loggingConf, logLevel)
+	if err != nil {
+		fmt.Printf("{\"op\": \"serve\", \"level\": \"fatal\", \"msg\": \"failed to initialize logger\", \"error\": \"%v\"}\n", err)
+		return
+	}
+	defer func() {
+		_ = logger.Sync()
+	}()
+
+	srvCfg, err := server.LoadConfig(serverConfigPath)
+	if err != nil {
+		logger.Fatal("failed to load server configuration",
+			zap.String("op", "serve"),
+			zap.Error(err),
+		)
+	}
+
+	if addr != "" {
+		srvCfg.Address = addr
+	}
+	if maxUpload != "" {
+		size, err := server.ParseSize(maxUpload)
+		if err != nil {
+			logger.Fatal("invalid max-upload value",
+				zap.String("op", "serve"),
+				zap.String("value", maxUpload),
+				zap.Error(err),
+			)
+		}
+		srvCfg.SetUploadSizeBytes(size)
+	}
+
+	logger.Info("starting finance-forecast web server",
+		zap.String("addr", srvCfg.Address),
+		zap.Int64("max_upload_bytes", srvCfg.UploadSizeBytes()),
+	)
+
+	handler := server.NewHandler(logger, srvCfg.UploadSizeBytes())
+	if err := http.ListenAndServe(srvCfg.Address, handler); err != nil {
+		logger.Fatal("server encountered an error",
+			zap.String("op", "serve"),
+			zap.Error(err),
+		)
+	}
 }

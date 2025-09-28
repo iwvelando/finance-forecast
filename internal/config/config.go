@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/iwvelando/finance-forecast/pkg/configprocessor"
@@ -78,6 +79,28 @@ func LoadConfiguration(configPath string) (*Configuration, error) {
 	var configuration Configuration
 	err := viper.Unmarshal(&configuration)
 	if err != nil {
+		return nil, fmt.Errorf("unable to decode into struct, %s", err)
+	}
+
+	return &configuration, nil
+}
+
+// LoadConfigurationFromReader loads the YAML-formatted configuration from an io.Reader.
+// This is useful for scenarios where the configuration is provided dynamically (e.g., via HTTP upload).
+func LoadConfigurationFromReader(reader io.Reader) (*Configuration, error) {
+	if reader == nil {
+		return nil, fmt.Errorf("configuration reader cannot be nil")
+	}
+
+	v := viper.New()
+	v.SetConfigType("yml")
+
+	if err := v.ReadConfig(reader); err != nil {
+		return nil, fmt.Errorf("error reading config data, %s", err)
+	}
+
+	var configuration Configuration
+	if err := v.Unmarshal(&configuration); err != nil {
 		return nil, fmt.Errorf("unable to decode into struct, %s", err)
 	}
 

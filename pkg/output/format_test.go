@@ -210,6 +210,50 @@ func TestCsvFormat(t *testing.T) {
 	}
 }
 
+func TestCsvStringMatchesCsvFormat(t *testing.T) {
+	results := []forecast.Forecast{
+		{
+			Name: "Scenario A",
+			Data: map[string]float64{
+				"2025-01": 1000.00,
+				"2025-02": 1500.50,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Note A1"},
+				"2025-02": {"Note A2"},
+			},
+		},
+		{
+			Name: "Scenario B",
+			Data: map[string]float64{
+				"2025-01": 900.00,
+			},
+			Notes: map[string][]string{
+				"2025-01": {"Note B1"},
+			},
+		},
+	}
+
+	expected := CsvString(results)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	CsvFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	if strings.TrimSpace(expected) != strings.TrimSpace(output) {
+		t.Fatalf("CsvString and CsvFormat output mismatch\nCsvString:\n%s\nCsvFormat:\n%s", expected, output)
+	}
+}
+
 func TestCsvFormatSingleScenario(t *testing.T) {
 	// Test CSV with single scenario
 	results := []forecast.Forecast{
