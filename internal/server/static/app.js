@@ -37,6 +37,9 @@ let latestConfigYaml = "";
 let defaultConfigInitialized = false;
 let isEditorLoading = false;
 let registeredInputs = [];
+let tooltipCounter = 0;
+let activeHelpTooltip = null;
+let helpTooltipInitialized = false;
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -392,6 +395,7 @@ function normalizeScenario(scenario) {
 }
 
 function renderConfigEditor() {
+	closeActiveHelpTooltip();
 	configEditorRoot.innerHTML = "";
 	registeredInputs = [];
 
@@ -423,7 +427,7 @@ function renderConfigEditor() {
 		value: currentConfig.common.startingValue ?? "",
 		inputType: "number",
 		step: "0.01",
-		tooltip: "Balance at the end of the start month. Use positive values for assets and negative values for debt.",
+		tooltip: "Balance at the end of the start month. Calculate this as your liquid net worth: cash and cash-equivalents minus short-term debts (e.g., credit card balances).",
 		validation: { type: "number" },
 	}));
 	commonGrid.appendChild(createInputField({
@@ -654,7 +658,7 @@ function createEventCard(event, basePath, index, titlePrefix, onRemove) {
 		path: `${basePath}.startDate`,
 		value: event.startDate ?? "",
 		inputType: "month",
-		tooltip: "Optional month when this event begins (YYYY-MM).",
+		tooltip: "Optional month when this event begins (YYYY-MM). Defaults to the simulation start month when left blank.",
 		validation: { type: "month" },
 		maxLength: 7,
 	}));
@@ -785,7 +789,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		path: `${basePath}.startDate`,
 		value: loan.startDate ?? "",
 		inputType: "month",
-		tooltip: "Month the loan begins (YYYY-MM).",
+		tooltip: "Required month when this loan begins (YYYY-MM). Loans do not assume a default start month.",
 		validation: { type: "month" },
 		maxLength: 7,
 	}));
@@ -822,7 +826,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.earlyPayoffThreshold ?? "",
 		inputType: "number",
 		step: "0.01",
-		tooltip: "Positive balance buffer that triggers an early payoff.",
+		tooltip: "Amount of cash you want to have remaining if you choose to pay off the loan early.",
 		validation: { type: "number", min: 0 },
 	}));
 	grid.appendChild(createInputField({
@@ -896,6 +900,124 @@ function createCardHeader(titleText, onRemove, removeLabel, options = {}) {
 	return { header, title };
 }
 
+function initHelpTooltipSystem() {
+	if (helpTooltipInitialized) {
+		return;
+	}
+	helpTooltipInitialized = true;
+
+	document.addEventListener("click", (event) => {
+		if (!activeHelpTooltip) {
+			return;
+		}
+		const { trigger, tooltip } = activeHelpTooltip;
+		if (trigger && trigger.contains(event.target)) {
+			return;
+		}
+		if (tooltip && tooltip.contains(event.target)) {
+			return;
+		}
+		closeActiveHelpTooltip();
+	});
+
+	document.addEventListener("keydown", (event) => {
+		if (event.key !== "Escape" || !activeHelpTooltip) {
+			return;
+		}
+		const { trigger } = activeHelpTooltip;
+		closeActiveHelpTooltip();
+		if (trigger && typeof trigger.focus === "function") {
+			trigger.focus();
+		}
+	});
+}
+
+function openHelpTooltip(trigger, tooltip) {
+	if (!trigger || !tooltip) {
+		return;
+	}
+	if (activeHelpTooltip && activeHelpTooltip.trigger === trigger) {
+		return;
+	}
+	closeActiveHelpTooltip();
+	tooltip.classList.remove("hidden");
+	trigger.setAttribute("aria-expanded", "true");
+	trigger.setAttribute("aria-describedby", tooltip.id);
+	trigger.classList.add("active");
+	activeHelpTooltip = { trigger, tooltip };
+}
+
+function closeActiveHelpTooltip() {
+	if (!activeHelpTooltip) {
+		return;
+	}
+	const { trigger, tooltip } = activeHelpTooltip;
+	if (trigger) {
+		trigger.setAttribute("aria-expanded", "false");
+		trigger.removeAttribute("aria-describedby");
+		trigger.classList.remove("active");
+	}
+	if (tooltip) {
+		tooltip.classList.add("hidden");
+	}
+	activeHelpTooltip = null;
+}
+
+function attachFieldHelp({ wrapper, labelEl, tooltipText, label }) {
+	if (!tooltipText) {
+		return null;
+	}
+
+	initHelpTooltipSystem();
+
+	tooltipCounter += 1;
+	const tooltipId = `field-tooltip-${tooltipCounter}`;
+	const accessibleLabel = label ? `${label} help` : "Field information";
+
+	const trigger = document.createElement("button");
+	trigger.type = "button";
+	trigger.className = "field-help-button";
+	trigger.setAttribute("aria-expanded", "false");
+	trigger.setAttribute("aria-controls", tooltipId);
+	trigger.setAttribute("aria-label", accessibleLabel);
+	trigger.innerHTML = "<span aria-hidden=\"true\">i</span>";
+
+	const tooltip = document.createElement("span");
+	tooltip.className = "field-tooltip hidden";
+	tooltip.id = tooltipId;
+	tooltip.setAttribute("role", "tooltip");
+	tooltip.textContent = tooltipText;
+
+	trigger.addEventListener("click", (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		if (activeHelpTooltip && activeHelpTooltip.trigger === trigger) {
+			closeActiveHelpTooltip();
+		} else {
+			openHelpTooltip(trigger, tooltip);
+		}
+	});
+
+	trigger.addEventListener("pointerdown", (event) => {
+		event.stopPropagation();
+	});
+
+	trigger.addEventListener("keydown", (event) => {
+		if (event.key === "Escape" && activeHelpTooltip && activeHelpTooltip.trigger === trigger) {
+			closeActiveHelpTooltip();
+		}
+	});
+
+	tooltip.addEventListener("click", (event) => {
+		event.stopPropagation();
+	});
+
+	labelEl.appendChild(trigger);
+	wrapper.appendChild(tooltip);
+
+	return { trigger, tooltip };
+}
+
 function createInputField({
 	label,
 	path,
@@ -962,7 +1084,6 @@ function createInputField({
 
 	if (tooltip) {
 		control.title = tooltip;
-		wrapper.title = tooltip;
 	}
 
 	if (validation && validation.type === "month") {
@@ -970,6 +1091,7 @@ function createInputField({
 	}
 
 	control.dataset.path = path;
+	attachFieldHelp({ wrapper, labelEl, tooltipText: tooltip, label });
 
 	const errorEl = document.createElement("span");
 	errorEl.className = "field-error hidden";
@@ -1030,12 +1152,12 @@ function createCheckboxField({ label, path, value, tooltip = "" }) {
 
 	if (tooltip) {
 		input.title = tooltip;
-		wrapper.title = tooltip;
 	}
 
 	const labelEl = document.createElement("span");
 	labelEl.className = "editor-label";
 	labelEl.textContent = label;
+	attachFieldHelp({ wrapper, labelEl, tooltipText: tooltip, label });
 
 	wrapper.appendChild(input);
 	wrapper.appendChild(labelEl);
@@ -1256,6 +1378,8 @@ function switchTab(tabName) {
 	if (!targetPanel) {
 		return;
 	}
+
+	closeActiveHelpTooltip();
 
 	const targetButton = tabButtons.find((button) => button.dataset.tab === tabName);
 	if (targetButton && targetButton.disabled) {

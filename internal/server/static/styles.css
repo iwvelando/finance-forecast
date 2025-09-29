@@ -388,11 +388,15 @@ button:disabled {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+    position: relative;
 }
 
 .editor-label {
     font-weight: 600;
     color: rgba(27, 31, 59, 0.75);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
 }
 
 .editor-field input,
@@ -416,6 +420,64 @@ button:disabled {
     font-size: 0.85rem;
     color: #c62828;
     line-height: 1.2;
+}
+
+.field-help-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 999px;
+    border: none;
+    background: rgba(58, 123, 213, 0.18);
+    color: #1b1f3b;
+    font-size: 0.8rem;
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.field-help-button span {
+    font-weight: 700;
+    pointer-events: none;
+}
+
+.field-help-button:hover,
+.field-help-button.active {
+    background: rgba(58, 123, 213, 0.32);
+    color: #163d74;
+}
+
+.field-help-button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(58, 123, 213, 0.3);
+}
+
+.field-tooltip {
+    position: absolute;
+    top: calc(100% + 0.55rem);
+    left: 0;
+    z-index: 25;
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    background: rgba(14, 22, 52, 0.96);
+    color: #f8fafc;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    box-shadow: 0 18px 36px -24px rgba(15, 23, 42, 0.65);
+    width: max-content;
+    max-width: min(320px, 85vw);
+}
+
+.editor-field.checkbox-field .field-tooltip {
+    left: 2.1rem;
+}
+
+@media (max-width: 600px) {
+    .field-tooltip {
+        max-width: 90vw;
+    }
 }
 
 .editor-field input::placeholder {
