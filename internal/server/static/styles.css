@@ -109,6 +109,18 @@ button:hover,
     box-shadow: 0 16px 30px -17px rgba(58, 123, 213, 0.8);
 }
 
+.button.subtle {
+    background: rgba(244, 67, 54, 0.08);
+    color: #a02620;
+    border: 1px solid rgba(244, 67, 54, 0.25);
+}
+
+.button.subtle:hover {
+    background: rgba(244, 67, 54, 0.16);
+    transform: none;
+    box-shadow: none;
+}
+
 button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
@@ -118,6 +130,18 @@ button:disabled {
 
 .hidden {
     display: none !important;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .message {
@@ -277,10 +301,6 @@ button:disabled {
     display: block;
 }
 
-#upload-panel {
-    padding-top: 2rem;
-}
-
 .results-panel {
     padding-top: 0;
 }
@@ -384,6 +404,18 @@ button:disabled {
     color: #1b1f3b;
     font-size: 0.95rem;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editor-field input.invalid,
+.editor-field select.invalid {
+    border-color: rgba(198, 40, 40, 0.85);
+    box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
+}
+
+.editor-field .field-error {
+    font-size: 0.85rem;
+    color: #c62828;
+    line-height: 1.2;
 }
 
 .editor-field input::placeholder {

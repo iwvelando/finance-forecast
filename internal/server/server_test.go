@@ -118,15 +118,22 @@ func TestHandleConfigExport(t *testing.T) {
 	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
 
 	payload := map[string]interface{}{
-		"common": map[string]interface{}{
-			"startingValue": 1500.0,
-			"deathDate":     "2050-01",
-		},
 		"scenarios": []interface{}{
 			map[string]interface{}{
 				"name":   "sample",
 				"active": true,
 			},
+		},
+		"common": map[string]interface{}{
+			"startingValue": 1500.0,
+			"deathDate":     "2050-01",
+		},
+		"output": map[string]interface{}{
+			"format": "pretty",
+		},
+		"logging": map[string]interface{}{
+			"level":   "info",
+			"enabled": true,
 		},
 	}
 
@@ -150,6 +157,34 @@ func TestHandleConfigExport(t *testing.T) {
 	}
 	if !strings.Contains(yamlStr, "scenarios:") {
 		t.Fatalf("expected yaml to contain scenarios section, got %q", yamlStr)
+	}
+
+	lines := strings.Split(strings.TrimRight(yamlStr, "\n"), "\n")
+	orderedTop := make([]string, 0, 2)
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		orderedTop = append(orderedTop, strings.TrimSpace(line))
+		if len(orderedTop) == 2 {
+			break
+		}
+	}
+
+	if len(orderedTop) < 2 {
+		t.Fatalf("expected at least two top-level keys in yaml, got %v", orderedTop)
+	}
+	if !strings.HasPrefix(orderedTop[0], "logging:") {
+		t.Fatalf("expected logging to be first key, got %q", orderedTop[0])
+	}
+	if !strings.HasPrefix(orderedTop[1], "output:") {
+		t.Fatalf("expected output to be second key, got %q", orderedTop[1])
 	}
 }
 

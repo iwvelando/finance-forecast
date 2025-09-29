@@ -181,7 +181,7 @@ func (h *handler) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 		payload = make(map[string]interface{})
 	}
 
-	yamlBytes, err := yaml.Marshal(payload)
+	yamlBytes, err := marshalOrderedConfigYAML(payload)
 	if err != nil {
 		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to encode configuration: %v", err), "server.handleConfigExport")
 		return
@@ -190,6 +190,64 @@ func (h *handler) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, map[string]string{
 		"configYaml": string(yamlBytes),
 	})
+}
+
+func marshalOrderedConfigYAML(payload map[string]interface{}) ([]byte, error) {
+	items := make([]orderedItem, 0, len(payload))
+	seen := make(map[string]struct{})
+
+	for _, key := range []string{"logging", "output"} {
+		if value, ok := payload[key]; ok {
+			items = append(items, orderedItem{key: key, value: value})
+			seen[key] = struct{}{}
+		}
+	}
+
+	remainingKeys := make([]string, 0, len(payload))
+	for key := range payload {
+		if _, already := seen[key]; already {
+			continue
+		}
+		remainingKeys = append(remainingKeys, key)
+	}
+	sort.Strings(remainingKeys)
+	for _, key := range remainingKeys {
+		items = append(items, orderedItem{key: key, value: payload[key]})
+	}
+
+	ordered := orderedConfig{items: items}
+	return yaml.Marshal(ordered)
+}
+
+type orderedConfig struct {
+	items []orderedItem
+}
+
+type orderedItem struct {
+	key   string
+	value interface{}
+}
+
+func (o orderedConfig) MarshalYAML() (interface{}, error) {
+	mapNode := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Tag:  "!!map",
+	}
+
+	for _, item := range o.items {
+		keyNode := &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   "!!str",
+			Value: item.key,
+		}
+		valueNode := &yaml.Node{}
+		if err := valueNode.Encode(item.value); err != nil {
+			return nil, err
+		}
+		mapNode.Content = append(mapNode.Content, keyNode, valueNode)
+	}
+
+	return mapNode, nil
 }
 
 func (h *handler) runForecast(w http.ResponseWriter, configBytes []byte, configMap map[string]interface{}, start time.Time, op string) {

@@ -1,21 +1,18 @@
-const form = document.getElementById("upload-form");
-const fileInput = document.getElementById("config-file");
-const runButton = document.getElementById("run-button");
-const loadingIndicator = document.getElementById("loading-indicator");
 const messageEl = document.getElementById("message");
 const warningsEl = document.getElementById("warnings");
 const resultsPanel = document.getElementById("results-section");
 const configPanel = document.getElementById("config-panel");
-const uploadPanel = document.getElementById("upload-panel");
 const tableHead = document.querySelector("#results-table thead");
 const tableBody = document.querySelector("#results-table tbody");
 const downloadLink = document.getElementById("download-link");
 const durationEl = document.getElementById("duration");
 const configEditorRoot = document.getElementById("config-editor");
-const rerunButton = document.getElementById("rerun-button");
+const uploadConfigInput = document.getElementById("upload-config-input");
+const uploadConfigButton = document.getElementById("upload-config-button");
+const runForecastButton = document.getElementById("run-forecast-button");
 const downloadConfigButton = document.getElementById("download-config-button");
+const resetConfigButton = document.getElementById("reset-config-button");
 const editorLoading = document.getElementById("editor-loading");
-const editorMessage = document.getElementById("editor-message");
 const tablistContainer = document.querySelector(".tablist-container");
 if (configPanel) {
 	configPanel.classList.add("sticky-headers");
@@ -25,20 +22,24 @@ const rootStyle = document.documentElement.style;
 
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = {
-	upload: uploadPanel,
 	results: resultsPanel,
 	config: configPanel,
 };
+const resultsTabButton = document.getElementById("tab-results");
 
-let activeTab = "upload";
+let activeTab = "config";
 let dataAvailable = false;
 let currentObjectUrl = null;
 let configDownloadUrl = null;
 let currentConfig = null;
 let hiddenLogging = null;
 let latestConfigYaml = "";
+let defaultConfigInitialized = false;
+let isEditorLoading = false;
+let registeredInputs = [];
 
-form.addEventListener("submit", handleUpload);
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 tabButtons.forEach((button) => {
 	button.addEventListener("click", () => {
 		const tab = button.dataset.tab;
@@ -48,8 +49,21 @@ tabButtons.forEach((button) => {
 	});
 });
 
-rerunButton.addEventListener("click", handleRerun);
+if (uploadConfigButton) {
+	uploadConfigButton.addEventListener("click", () => {
+		if (uploadConfigInput) {
+			uploadConfigInput.click();
+		}
+	});
+}
+
+if (uploadConfigInput) {
+	uploadConfigInput.addEventListener("change", handleConfigFileSelection);
+}
+
+runForecastButton.addEventListener("click", handleRunForecast);
 downloadConfigButton.addEventListener("click", downloadCurrentConfig);
+resetConfigButton.addEventListener("click", handleResetConfig);
 
 const updateStickyMetrics = () => {
 	if (tablistContainer) {
@@ -72,33 +86,39 @@ updateStickyMetrics();
 window.addEventListener("resize", updateStickyMetrics);
 window.addEventListener("load", updateStickyMetrics);
 
-function toggleLoading(isLoading) {
-	runButton.disabled = isLoading;
-	loadingIndicator.classList.toggle("hidden", !isLoading);
-}
+initializeWorkspace();
 
 function toggleEditorLoading(isLoading) {
-	const configReady = dataAvailable && !!currentConfig;
-	rerunButton.disabled = isLoading || !configReady;
-	downloadConfigButton.disabled = isLoading || !configReady;
+	isEditorLoading = isLoading;
+	if (uploadConfigButton) {
+		uploadConfigButton.disabled = isLoading;
+	}
+	resetConfigButton.disabled = isLoading;
 	editorLoading.classList.toggle("hidden", !isLoading);
+	updateEditorActionsState();
 	updateStickyMetrics();
 }
 
-async function handleUpload(event) {
-	event.preventDefault();
-
-	if (!fileInput.files || fileInput.files.length === 0) {
-		showMessage("Please select a YAML file to continue.", "error");
+function handleConfigFileSelection(event) {
+	const input = event.target;
+	const file = input && input.files && input.files[0] ? input.files[0] : null;
+	if (!file) {
 		return;
 	}
 
-	toggleLoading(true);
-	clearResults();
+	showMessage("", null);
+	runForecastFromFile(file).finally(() => {
+		input.value = "";
+	});
+}
+
+async function runForecastFromFile(file) {
+	toggleEditorLoading(true);
+	clearResultsView();
 
 	try {
 		const formData = new FormData();
-		formData.append("file", fileInput.files[0]);
+		formData.append("file", file);
 
 		const response = await fetch("/api/forecast", {
 			method: "POST",
@@ -116,7 +136,7 @@ async function handleUpload(event) {
 		console.error("Forecast request failed", error);
 		showMessage(error.message, "error");
 	} finally {
-		toggleLoading(false);
+		toggleEditorLoading(false);
 	}
 }
 
@@ -132,11 +152,17 @@ function processForecastResponse(data, successMessage, options = {}) {
 }
 
 function showMessage(message, type) {
+	if (!message) {
+		messageEl.textContent = "";
+		messageEl.className = "message hidden";
+		return;
+	}
+
 	messageEl.textContent = message;
 	messageEl.className = type ? `message ${type}` : "message";
 }
 
-function clearResults() {
+function clearResultsView() {
 	warningsEl.textContent = "";
 	warningsEl.classList.add("hidden");
 	tableHead.innerHTML = "";
@@ -148,18 +174,6 @@ function clearResults() {
 		URL.revokeObjectURL(currentObjectUrl);
 		currentObjectUrl = null;
 	}
-
-	if (configDownloadUrl) {
-		URL.revokeObjectURL(configDownloadUrl);
-		configDownloadUrl = null;
-	}
-
-	currentConfig = null;
-	hiddenLogging = null;
-	latestConfigYaml = "";
-	configEditorRoot.innerHTML = "";
-	showEditorMessage("", null);
-	setDataAvailability(false);
 }
 
 function renderResults(data) {
@@ -167,6 +181,7 @@ function renderResults(data) {
 		throw new Error("Malformed response received from server");
 	}
 
+	clearResultsView();
 	tableHead.innerHTML = "";
 	tableBody.innerHTML = "";
 
@@ -291,8 +306,8 @@ function updateConfigState(data) {
 	const rawConfig = data && data.config ? data.config : null;
 
 	if (!rawConfig) {
-		currentConfig = null;
-		hiddenLogging = null;
+		currentConfig = createInitialConfig();
+		hiddenLogging = getDefaultLoggingConfig();
 		latestConfigYaml = "";
 		renderConfigEditor();
 		setDataAvailability(false);
@@ -301,7 +316,12 @@ function updateConfigState(data) {
 
 	const prepared = prepareConfigForEditing(rawConfig);
 	currentConfig = prepared.config;
-	hiddenLogging = prepared.logging;
+	hiddenLogging = prepared.logging || getDefaultLoggingConfig();
+	if (!currentConfig.output || typeof currentConfig.output !== "object") {
+		currentConfig.output = { format: "pretty" };
+	} else if (!currentConfig.output.format) {
+		currentConfig.output.format = "pretty";
+	}
 	latestConfigYaml = typeof data.configYaml === "string" ? data.configYaml : "";
 
 	renderConfigEditor();
@@ -328,7 +348,11 @@ function prepareConfigForEditing(rawConfig) {
 		? cloned.scenarios.map(normalizeScenario)
 		: [];
 
-	cloned.output = cloned.output && typeof cloned.output === "object" ? cloned.output : {};
+	if (!cloned.output || typeof cloned.output !== "object") {
+		cloned.output = { format: "pretty" };
+	} else if (!cloned.output.format) {
+		cloned.output.format = "pretty";
+	}
 
 	return {
 		config: cloned,
@@ -369,17 +393,11 @@ function normalizeScenario(scenario) {
 
 function renderConfigEditor() {
 	configEditorRoot.innerHTML = "";
+	registeredInputs = [];
 
 	if (!currentConfig) {
-		const emptyState = document.createElement("p");
-		emptyState.className = "muted-text";
-		emptyState.textContent = "Upload a configuration to view and edit its settings.";
-		configEditorRoot.appendChild(emptyState);
-		updateStickyMetrics();
-		return;
+		currentConfig = createInitialConfig();
 	}
-
-	showEditorMessage("", null);
 
 	const simulationSection = createSection("Simulation", "Control global simulation behavior.");
 	const simGrid = document.createElement("div");
@@ -389,6 +407,9 @@ function renderConfigEditor() {
 		path: "startDate",
 		value: currentConfig.startDate ?? "",
 		inputType: "month",
+		tooltip: "First month of the simulation in YYYY-MM format.",
+		validation: { type: "month", required: true },
+		maxLength: 7,
 	}));
 	simulationSection.body.appendChild(simGrid);
 	configEditorRoot.appendChild(simulationSection.section);
@@ -402,12 +423,17 @@ function renderConfigEditor() {
 		value: currentConfig.common.startingValue ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Balance at the end of the start month. Use positive values for assets and negative values for debt.",
+		validation: { type: "number" },
 	}));
 	commonGrid.appendChild(createInputField({
 		label: "Death date (YYYY-MM)",
 		path: "common.deathDate",
 		value: currentConfig.common.deathDate ?? "",
 		inputType: "month",
+		tooltip: "Month when the simulation ends (YYYY-MM).",
+		validation: { type: "month", required: true },
+		maxLength: 7,
 	}));
 	commonSection.body.appendChild(commonGrid);
 	commonSection.body.appendChild(createEventCollection(currentConfig.common.events, "common.events", {
@@ -447,6 +473,7 @@ function renderConfigEditor() {
 	configEditorRoot.appendChild(scenariosSection.section);
 
 	updateStickyMetrics();
+	validateEditorForm();
 }
 
 function createSection(title, description) {
@@ -500,6 +527,9 @@ function createScenarioCard(scenario, index) {
 		value: scenario.name ?? "",
 		inputType: "text",
 		placeholder: "e.g., Base case",
+		tooltip: "Display name for this scenario in tables and charts.",
+		validation: { type: "text", maxLength: 120 },
+		maxLength: 120,
 		onChange: (value) => {
 			title.textContent = value || `Scenario ${index + 1}`;
 		},
@@ -508,6 +538,7 @@ function createScenarioCard(scenario, index) {
 		label: "Active",
 		path: `scenarios[${index}].active`,
 		value: scenario.active,
+		tooltip: "Toggle whether this scenario participates in the simulation run.",
 	}));
 	card.appendChild(grid);
 
@@ -592,6 +623,9 @@ function createEventCard(event, basePath, index, titlePrefix, onRemove) {
 		path: `${basePath}.name`,
 		value: event.name ?? "",
 		inputType: "text",
+		tooltip: "Optional label shown in reports and logs for this event.",
+		validation: { type: "text", maxLength: 120 },
+		maxLength: 120,
 		onChange: (value) => {
 			title.textContent = value || `${titlePrefix} ${index + 1}`;
 		},
@@ -602,6 +636,8 @@ function createEventCard(event, basePath, index, titlePrefix, onRemove) {
 		value: event.amount ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Positive amounts represent income; negative amounts represent expenses.",
+		validation: { type: "number" },
 	}));
 	grid.appendChild(createInputField({
 		label: "Frequency (months)",
@@ -610,18 +646,26 @@ function createEventCard(event, basePath, index, titlePrefix, onRemove) {
 		inputType: "number",
 		step: "1",
 		numberKind: "int",
+		tooltip: "Number of months between occurrences (1 = monthly, 3 = quarterly, etc.).",
+		validation: { type: "integer", min: 1 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Start date (YYYY-MM)",
 		path: `${basePath}.startDate`,
 		value: event.startDate ?? "",
 		inputType: "month",
+		tooltip: "Optional month when this event begins (YYYY-MM).",
+		validation: { type: "month" },
+		maxLength: 7,
 	}));
 	grid.appendChild(createInputField({
 		label: "End date (YYYY-MM)",
 		path: `${basePath}.endDate`,
 		value: event.endDate ?? "",
 		inputType: "month",
+		tooltip: "Optional month when this event ends (YYYY-MM).",
+		validation: { type: "month" },
+		maxLength: 7,
 	}));
 	card.appendChild(grid);
 
@@ -692,6 +736,9 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		path: `${basePath}.name`,
 		value: loan.name ?? "",
 		inputType: "text",
+		tooltip: "Optional label shown in reports for this loan.",
+		validation: { type: "text", maxLength: 120 },
+		maxLength: 120,
 		onChange: (value) => {
 			title.textContent = value || `Loan ${index + 1}`;
 		},
@@ -702,6 +749,8 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.principal ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Original loan principal before any down payment is applied.",
+		validation: { type: "number", min: 0 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Down payment",
@@ -709,6 +758,8 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.downPayment ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Amount paid up front to reduce the principal.",
+		validation: { type: "number", min: 0 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Interest rate (%)",
@@ -716,6 +767,8 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.interestRate ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Annual interest rate expressed as a percentage.",
+		validation: { type: "number", min: 0, max: 100 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Term (months)",
@@ -724,12 +777,17 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		inputType: "number",
 		step: "1",
 		numberKind: "int",
+		tooltip: "Length of the loan in months.",
+		validation: { type: "integer", min: 1 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Start date (YYYY-MM)",
 		path: `${basePath}.startDate`,
 		value: loan.startDate ?? "",
 		inputType: "month",
+		tooltip: "Month the loan begins (YYYY-MM).",
+		validation: { type: "month" },
+		maxLength: 7,
 	}));
 	grid.appendChild(createInputField({
 		label: "Escrow",
@@ -737,6 +795,8 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.escrow ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Optional monthly escrow payment associated with the loan.",
+		validation: { type: "number" },
 	}));
 	grid.appendChild(createInputField({
 		label: "Mortgage insurance",
@@ -744,6 +804,8 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.mortgageInsurance ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Monthly mortgage insurance premium, if applicable.",
+		validation: { type: "number", min: 0 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Mortgage insurance cutoff (%)",
@@ -751,6 +813,8 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.mortgageInsuranceCutoff ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Loan-to-value percentage at which mortgage insurance ends.",
+		validation: { type: "number", min: 0 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Early payoff threshold",
@@ -758,17 +822,23 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.earlyPayoffThreshold ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Positive balance buffer that triggers an early payoff.",
+		validation: { type: "number", min: 0 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Early payoff date (YYYY-MM)",
 		path: `${basePath}.earlyPayoffDate`,
 		value: loan.earlyPayoffDate ?? "",
 		inputType: "month",
+		tooltip: "Optional month when the loan should be paid off early (YYYY-MM).",
+		validation: { type: "month" },
+		maxLength: 7,
 	}));
 	grid.appendChild(createCheckboxField({
 		label: "Sell property when paid off",
 		path: `${basePath}.sellProperty`,
 		value: loan.sellProperty,
+		tooltip: "When enabled, the property is sold as soon as the loan is paid off.",
 	}));
 	grid.appendChild(createInputField({
 		label: "Sell price",
@@ -776,6 +846,8 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.sellPrice ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Expected sale price when the property is sold.",
+		validation: { type: "number", min: 0 },
 	}));
 	grid.appendChild(createInputField({
 		label: "Sell costs (net)",
@@ -783,6 +855,8 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.sellCostsNet ?? "",
 		inputType: "number",
 		step: "0.01",
+		tooltip: "Net costs (positive) or proceeds (negative) incurred when selling.",
+		validation: { type: "number" },
 	}));
 	card.appendChild(grid);
 
@@ -822,9 +896,24 @@ function createCardHeader(titleText, onRemove, removeLabel, options = {}) {
 	return { header, title };
 }
 
-function createInputField({ label, path, value, inputType = "text", placeholder = "", step, min, options = [], numberKind, onChange }) {
+function createInputField({
+	label,
+	path,
+	value,
+	inputType = "text",
+	placeholder = "",
+	step,
+	min,
+	options = [],
+	numberKind,
+	onChange,
+	tooltip = "",
+	validation = null,
+	maxLength,
+}) {
 	const wrapper = document.createElement("label");
 	wrapper.className = "editor-field";
+ 
 
 	const labelEl = document.createElement("span");
 	labelEl.className = "editor-label";
@@ -860,21 +949,77 @@ function createInputField({ label, path, value, inputType = "text", placeholder 
 			if (numberKind) {
 				control.dataset.numberKind = numberKind;
 			}
+			control.inputMode = numberKind === "int" ? "numeric" : "decimal";
 		} else {
 			control.dataset.valueType = "text";
+			if (inputType === "month") {
+				control.inputMode = "numeric";
+			}
 		}
+	}
+
+	if (typeof maxLength === "number" && control.tagName === "INPUT") {
+		control.maxLength = maxLength;
+	}
+
+	if (tooltip) {
+		control.title = tooltip;
+		wrapper.title = tooltip;
+	}
+
+	if (validation && validation.type === "month") {
+		control.setAttribute("pattern", "\\d{4}-(0[1-9]|1[0-2])");
 	}
 
 	control.dataset.path = path;
 
+	const errorEl = document.createElement("span");
+	errorEl.className = "field-error hidden";
+
+	const entry = {
+		control,
+		errorEl,
+		validation,
+		label,
+		path,
+		touched: false,
+		isValid: !validation,
+	};
+
 	const eventType = inputType === "select" ? "change" : "input";
-	control.addEventListener(eventType, (event) => updateFromInput(event, onChange));
+	control.addEventListener(eventType, (event) => {
+		updateFromInput(event, onChange);
+		entry.touched = true;
+		if (entry.validation) {
+			runFieldValidation(entry);
+		} else {
+			entry.isValid = true;
+		}
+		updateEditorActionsState();
+	});
+
+	control.addEventListener("blur", () => {
+		if (!entry.validation) {
+			return;
+		}
+		entry.touched = true;
+		runFieldValidation(entry, { report: true });
+		updateEditorActionsState();
+	});
+
+	registeredInputs.push(entry);
+	if (entry.validation) {
+		runFieldValidation(entry, { report: false });
+	} else {
+		entry.isValid = true;
+	}
 
 	wrapper.appendChild(control);
+	wrapper.appendChild(errorEl);
 	return wrapper;
 }
 
-function createCheckboxField({ label, path, value }) {
+function createCheckboxField({ label, path, value, tooltip = "" }) {
 	const wrapper = document.createElement("label");
 	wrapper.className = "editor-field checkbox-field";
 
@@ -885,6 +1030,11 @@ function createCheckboxField({ label, path, value }) {
 	input.dataset.valueType = "boolean";
 	input.addEventListener("change", (event) => updateFromInput(event));
 
+	if (tooltip) {
+		input.title = tooltip;
+		wrapper.title = tooltip;
+	}
+
 	const labelEl = document.createElement("span");
 	labelEl.className = "editor-label";
 	labelEl.textContent = label;
@@ -892,6 +1042,133 @@ function createCheckboxField({ label, path, value }) {
 	wrapper.appendChild(input);
 	wrapper.appendChild(labelEl);
 	return wrapper;
+}
+
+function validateEditorForm({ focusFirstError = false, report = false } = {}) {
+	let firstInvalid = null;
+	registeredInputs.forEach((entry) => {
+		if (!runFieldValidation(entry, { report })) {
+			if (!firstInvalid) {
+				firstInvalid = entry;
+			}
+		}
+	});
+
+	if (firstInvalid && focusFirstError) {
+		try {
+			firstInvalid.control.focus({ preventScroll: true });
+		} catch (error) {
+			firstInvalid.control.focus();
+		}
+		if (typeof firstInvalid.control.scrollIntoView === "function") {
+			firstInvalid.control.scrollIntoView({ block: "center", behavior: "smooth" });
+		}
+	}
+
+	updateEditorActionsState();
+	return !firstInvalid;
+}
+
+function runFieldValidation(entry, options = {}) {
+	const { validation } = entry;
+	if (!validation) {
+		entry.isValid = true;
+		return true;
+	}
+
+	const { control, errorEl } = entry;
+	const rawValue = control.value ?? "";
+	const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+	const required = Boolean(validation.required);
+	const hasValue = value !== "";
+	let message = "";
+
+	if (required && !hasValue) {
+		message = validation.requiredMessage || `${entry.label || "This field"} is required.`;
+	}
+
+	let numericValue;
+	if (!message && hasValue) {
+		switch (validation.type) {
+			case "month":
+				if (!MONTH_PATTERN.test(value)) {
+					message = validation.formatMessage || "Enter a valid month in YYYY-MM.";
+				}
+				break;
+			case "integer":
+				numericValue = Number(value);
+				if (!Number.isInteger(numericValue)) {
+					message = validation.formatMessage || `${entry.label || "This field"} must be a whole number.`;
+				}
+				break;
+			case "number":
+				numericValue = Number(value);
+				if (Number.isNaN(numericValue)) {
+					message = validation.formatMessage || `${entry.label || "This field"} must be a number.`;
+				}
+				break;
+			case "text":
+				if (validation.pattern && !validation.pattern.test(value)) {
+					message = validation.formatMessage || `${entry.label || "This field"} has an invalid format.`;
+				}
+				if (!message && validation.maxLength && value.length > validation.maxLength) {
+					message = validation.maxLengthMessage || `${entry.label || "This field"} must be ${validation.maxLength} characters or fewer.`;
+				}
+				break;
+			default:
+				break;
+		}
+	}
+
+	if (!message && hasValue && (validation.type === "number" || validation.type === "integer")) {
+		if (numericValue === undefined) {
+			numericValue = Number(value);
+		}
+		if (!Number.isNaN(numericValue)) {
+			if (validation.min !== undefined && numericValue < validation.min) {
+				message = validation.minMessage || `${entry.label || "This field"} must be at least ${validation.min}.`;
+			} else if (validation.max !== undefined && numericValue > validation.max) {
+				message = validation.maxMessage || `${entry.label || "This field"} must be at most ${validation.max}.`;
+			}
+		}
+	}
+
+	if (!message && typeof validation.validate === "function") {
+		const customMessage = validation.validate(value, control);
+		if (typeof customMessage === "string" && customMessage) {
+			message = customMessage;
+		}
+	}
+
+	entry.isValid = !message;
+	const shouldReveal = options.report || entry.touched;
+
+	if (validation.required) {
+		control.setAttribute("aria-required", "true");
+	} else {
+		control.removeAttribute("aria-required");
+	}
+
+	if (shouldReveal) {
+		if (message) {
+			errorEl.textContent = message;
+			errorEl.classList.remove("hidden");
+			control.classList.add("invalid");
+			control.setAttribute("aria-invalid", "true");
+		} else {
+			errorEl.textContent = "";
+			errorEl.classList.add("hidden");
+			control.classList.remove("invalid");
+			control.removeAttribute("aria-invalid");
+		}
+	} else {
+		errorEl.textContent = "";
+		errorEl.classList.add("hidden");
+		control.classList.remove("invalid");
+		control.removeAttribute("aria-invalid");
+	}
+
+	return entry.isValid;
 }
 
 function createEmptyEvent() {
@@ -931,23 +1208,49 @@ function createEmptyScenario() {
 	};
 }
 
+function createInitialConfig() {
+	return {
+		startDate: "",
+		output: { format: "pretty" },
+		common: {
+			startingValue: "",
+			deathDate: "",
+			events: [],
+			loans: [],
+		},
+		scenarios: [createEmptyScenario()],
+	};
+}
+
+function getDefaultLoggingConfig() {
+	return {
+		level: "info",
+		format: "json",
+	};
+}
+
 function setDataAvailability(available) {
 	dataAvailable = available;
-	const resultsTab = document.getElementById("tab-results");
-	const configTab = document.getElementById("tab-config");
-	const configReady = available && !!currentConfig;
-
-	resultsTab.disabled = !available;
-	configTab.disabled = !available;
-
-	if (!available && activeTab !== "upload") {
-		switchTab("upload");
+	if (resultsTabButton) {
+		resultsTabButton.disabled = !available;
+	}
+	if (!available && activeTab === "results") {
+		switchTab("config");
 	}
 
-	rerunButton.disabled = !configReady;
-	downloadConfigButton.disabled = !configReady;
-
 	updateStickyMetrics();
+	updateEditorActionsState();
+}
+
+function updateEditorActionsState() {
+	const hasConfig = !!currentConfig;
+	const hasErrors = hasValidationErrors();
+	runForecastButton.disabled = isEditorLoading || !hasConfig || hasErrors;
+	downloadConfigButton.disabled = isEditorLoading || !hasConfig;
+}
+
+function hasValidationErrors() {
+	return registeredInputs.some((entry) => entry.validation && entry.isValid === false);
 }
 
 function switchTab(tabName) {
@@ -978,26 +1281,19 @@ function switchTab(tabName) {
 	updateStickyMetrics();
 }
 
-function showEditorMessage(message, type) {
-	if (!message) {
-		editorMessage.className = "message hidden";
-		updateStickyMetrics();
-		return;
-	}
-
-	editorMessage.textContent = message;
-	editorMessage.className = type ? `message ${type}` : "message";
-	editorMessage.classList.remove("hidden");
-	updateStickyMetrics();
-}
-
-async function handleRerun() {
+async function handleRunForecast() {
 	if (!currentConfig) {
 		return;
 	}
 
+	const isValid = validateEditorForm({ focusFirstError: true, report: true });
+	if (!isValid) {
+		showMessage("Please fix the highlighted fields before running the forecast.", "error");
+		return;
+	}
+
 	toggleEditorLoading(true);
-	showEditorMessage("", null);
+	showMessage("", null);
 
 	try {
 		const payload = buildConfigPayload();
@@ -1015,22 +1311,66 @@ async function handleRerun() {
 			throw new Error(data.error || "Unable to process forecast");
 		}
 
-		processForecastResponse(data, "Forecast updated successfully.", { switchToResults: false });
-		showEditorMessage("Forecast updated successfully.", "success");
+		processForecastResponse(data, "Forecast updated successfully.");
 	} catch (error) {
-		console.error("Re-run request failed", error);
-		showEditorMessage(error.message, "error");
+		console.error("Run request failed", error);
 		showMessage(error.message, "error");
 	} finally {
 		toggleEditorLoading(false);
 	}
 }
 
-function buildConfigPayload() {
+function handleResetConfig() {
+	const confirmed = window.confirm("Reset the current configuration? This will clear all fields and results.");
+	if (!confirmed) {
+		return;
+	}
+
+	currentConfig = createInitialConfig();
+	hiddenLogging = getDefaultLoggingConfig();
+	latestConfigYaml = "";
+	clearResultsView();
+	if (configDownloadUrl) {
+		URL.revokeObjectURL(configDownloadUrl);
+		configDownloadUrl = null;
+	}
+	setDataAvailability(false);
+	renderConfigEditor();
+	switchTab("config");
+	showMessage("Configuration reset. Start building your new plan.", "success");
+}
+
+function initializeWorkspace() {
+	if (!defaultConfigInitialized) {
+		currentConfig = createInitialConfig();
+		hiddenLogging = getDefaultLoggingConfig();
+		defaultConfigInitialized = true;
+	}
+
+	clearResultsView();
+	renderConfigEditor();
+	setDataAvailability(false);
+	switchTab("config");
+	showMessage("Start by building a plan or upload an existing YAML configuration.", null);
+}
+
+function buildConfigPayload(options = {}) {
+	const { includeDefaults = false } = options;
 	const payload = cloneDeep(currentConfig) || {};
+
+	if (!payload.output || typeof payload.output !== "object") {
+		payload.output = {};
+	}
+	if (includeDefaults && !payload.output.format) {
+		payload.output.format = "pretty";
+	}
+
 	if (hiddenLogging) {
 		payload.logging = cloneDeep(hiddenLogging);
+	} else if (includeDefaults) {
+		payload.logging = getDefaultLoggingConfig();
 	}
+
 	return payload;
 }
 
@@ -1040,10 +1380,10 @@ async function downloadCurrentConfig() {
 	}
 
 	downloadConfigButton.disabled = true;
-	showEditorMessage("", null);
+	showMessage("", null);
 
 	try {
-		const payload = buildConfigPayload();
+		const payload = buildConfigPayload({ includeDefaults: true });
 		const response = await fetch("/api/editor/export", {
 			method: "POST",
 			headers: {
@@ -1060,15 +1400,14 @@ async function downloadCurrentConfig() {
 
 		latestConfigYaml = data.configYaml || "";
 		triggerConfigDownload(latestConfigYaml);
-		showEditorMessage("Configuration downloaded.", "success");
+		showMessage("Configuration downloaded.", "success");
 	} catch (error) {
 		console.error("Download config failed", error);
-		showEditorMessage(error.message, "error");
 		showMessage(error.message, "error");
 	} finally {
-		const configReady = dataAvailable && !!currentConfig;
-		downloadConfigButton.disabled = !configReady;
-		rerunButton.disabled = !configReady;
+		const hasConfig = !!currentConfig;
+		downloadConfigButton.disabled = !hasConfig;
+		runForecastButton.disabled = !hasConfig;
 	}
 }
 
