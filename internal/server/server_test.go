@@ -13,6 +13,7 @@ import (
 
 	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 func TestHandleForecastSuccess(t *testing.T) {
@@ -65,6 +66,125 @@ func TestHandleForecastSuccess(t *testing.T) {
 	}
 	if resp.Duration == "" {
 		t.Fatal("expected duration in response")
+	}
+	if resp.Config == nil {
+		t.Fatal("expected config data in response")
+	}
+	if resp.ConfigYAML == "" {
+		t.Fatal("expected config YAML in response")
+	}
+}
+
+func TestHandleForecastEditorSuccess(t *testing.T) {
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+
+	configPath := filepath.Join("..", "..", "test", "test_config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read test config: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := yaml.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+
+	rr := performEditorJSON(t, handler, payload, "/api/editor/forecast")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp forecastResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp.Scenarios) == 0 {
+		t.Fatal("expected scenarios in response")
+	}
+	if len(resp.Rows) == 0 {
+		t.Fatal("expected rows in response")
+	}
+	if resp.Config == nil {
+		t.Fatal("expected config data in response")
+	}
+	if resp.ConfigYAML == "" {
+		t.Fatal("expected config YAML in response")
+	}
+}
+
+func TestHandleConfigExport(t *testing.T) {
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+
+	payload := map[string]interface{}{
+		"scenarios": []interface{}{
+			map[string]interface{}{
+				"name":   "sample",
+				"active": true,
+			},
+		},
+		"common": map[string]interface{}{
+			"startingValue": 1500.0,
+			"deathDate":     "2050-01",
+		},
+		"output": map[string]interface{}{
+			"format": "pretty",
+		},
+		"logging": map[string]interface{}{
+			"level":   "info",
+			"enabled": true,
+		},
+	}
+
+	rr := performEditorJSON(t, handler, payload, "/api/editor/export")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	yamlStr := resp["configYaml"]
+	if yamlStr == "" {
+		t.Fatal("expected configYaml in response")
+	}
+	if !strings.Contains(yamlStr, "common:") {
+		t.Fatalf("expected yaml to contain common section, got %q", yamlStr)
+	}
+	if !strings.Contains(yamlStr, "scenarios:") {
+		t.Fatalf("expected yaml to contain scenarios section, got %q", yamlStr)
+	}
+
+	lines := strings.Split(strings.TrimRight(yamlStr, "\n"), "\n")
+	orderedTop := make([]string, 0, 2)
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		orderedTop = append(orderedTop, strings.TrimSpace(line))
+		if len(orderedTop) == 2 {
+			break
+		}
+	}
+
+	if len(orderedTop) < 2 {
+		t.Fatalf("expected at least two top-level keys in yaml, got %v", orderedTop)
+	}
+	if !strings.HasPrefix(orderedTop[0], "logging:") {
+		t.Fatalf("expected logging to be first key, got %q", orderedTop[0])
+	}
+	if !strings.HasPrefix(orderedTop[1], "output:") {
+		t.Fatalf("expected output to be second key, got %q", orderedTop[1])
 	}
 }
 
@@ -269,6 +389,23 @@ func performUpload(t *testing.T, handler http.Handler, content, filename string)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/forecast", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	return rr
+}
+
+func performEditorJSON(t *testing.T, handler http.Handler, payload map[string]interface{}, path string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("failed to marshal payload: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)

@@ -11,35 +11,47 @@
     <main class="container">
         <header class="hero">
             <h1>Finance Forecast</h1>
-            <p>Upload a YAML configuration to simulate your personal wealth projection.</p>
+            <p>Build or upload a configuration to simulate your financial plans.</p>
         </header>
 
-        <section class="panel">
-            <form id="upload-form" class="upload-form">
-                <label for="config-file" class="input-label">Configuration file (.yaml or .yml)</label>
-                <input id="config-file" name="file" type="file" accept=".yaml,.yml" required>
-                <div class="form-actions">
-                    <button type="submit" id="run-button">Run Forecast</button>
-                    <span id="loading-indicator" class="hidden">Processing…</span>
-                </div>
-            </form>
-            <div id="message" role="status" aria-live="polite"></div>
-            <div id="warnings" class="warnings hidden" aria-live="polite"></div>
-        </section>
-
-        <section id="results-section" class="panel hidden">
-            <div class="results-header">
-                <h2>Simulation Results</h2>
-                <div class="results-actions">
-                    <span id="duration" class="muted-text"></span>
-                    <a id="download-link" class="button secondary hidden" download="forecast.csv">Download CSV</a>
+        <section id="workspace-panel" class="panel">
+            <div class="tablist-container">
+                <div class="tablist" role="tablist" aria-label="Forecast workspace">
+                    <button id="tab-config" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="config-panel" data-tab="config">Planning Workspace</button>
+                    <button id="tab-results" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="results-section" data-tab="results" disabled>Results</button>
                 </div>
             </div>
-            <div class="table-container">
-                <table id="results-table">
-                    <thead></thead>
-                    <tbody></tbody>
-                </table>
+            <div id="results-section" class="tab-panel results-panel" role="tabpanel" aria-labelledby="tab-results" hidden>
+                <div class="results-header">
+                    <h2>Simulation Results</h2>
+                    <div class="results-actions">
+                        <span id="duration" class="muted-text"></span>
+                        <a id="download-link" class="button secondary hidden" download="forecast.csv">Download CSV</a>
+                    </div>
+                </div>
+                <div id="warnings" class="warnings hidden" aria-live="polite"></div>
+                <div class="table-container">
+                    <table id="results-table">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="config-panel" class="tab-panel config-panel active" role="tabpanel" aria-labelledby="tab-config">
+                <div class="editor-toolbar">
+                    <div class="toolbar-top">
+                        <div class="editor-actions">
+                            <button id="upload-config-button" type="button" class="button secondary">Upload Config</button>
+                            <input id="upload-config-input" type="file" accept=".yaml,.yml" class="visually-hidden" aria-hidden="true" tabindex="-1">
+                            <button id="run-forecast-button" type="button">Run Forecast</button>
+                            <button id="download-config-button" type="button" class="button secondary" disabled>Download Config</button>
+                            <button id="reset-config-button" type="button" class="button subtle">Reset Config</button>
+                            <span id="editor-loading" class="hidden">Processing…</span>
+                        </div>
+                    </div>
+                </div>
+                <div id="message" class="message hidden" role="status" aria-live="polite"></div>
+                <div id="config-editor" class="config-editor"></div>
             </div>
         </section>
     </main>
