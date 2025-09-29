@@ -24,3 +24,6 @@
 
 /config.yaml
 /finance-forecast
+
+# Built binaries
+/build

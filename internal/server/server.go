@@ -18,6 +18,7 @@ import (
 	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/output"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed static/*
@@ -42,8 +43,14 @@ func NewHandler(logger *zap.Logger, maxUploadSize int64) http.Handler {
 
 	mux := http.NewServeMux()
 
-	// Forecast API endpoint
+	// Forecast API endpoint (file upload)
 	mux.HandleFunc("/api/forecast", h.handleForecast)
+
+	// Forecast API endpoint for editor-driven updates
+	mux.HandleFunc("/api/editor/forecast", h.handleForecastEditor)
+
+	// Config serialization endpoint for editor downloads
+	mux.HandleFunc("/api/editor/export", h.handleConfigExport)
 
 	// Static assets (web UI)
 	sub, err := fs.Sub(staticFiles, "static")
@@ -57,11 +64,13 @@ func NewHandler(logger *zap.Logger, maxUploadSize int64) http.Handler {
 }
 
 type forecastResponse struct {
-	Scenarios []string      `json:"scenarios"`
-	Rows      []forecastRow `json:"rows"`
-	CSV       string        `json:"csv"`
-	Warnings  []string      `json:"warnings,omitempty"`
-	Duration  string        `json:"duration"`
+	Scenarios  []string               `json:"scenarios"`
+	Rows       []forecastRow          `json:"rows"`
+	CSV        string                 `json:"csv"`
+	Warnings   []string               `json:"warnings,omitempty"`
+	Duration   string                 `json:"duration"`
+	Config     map[string]interface{} `json:"config,omitempty"`
+	ConfigYAML string                 `json:"configYaml,omitempty"`
 }
 
 type forecastRow struct {
@@ -115,42 +124,117 @@ func (h *handler) handleForecast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := config.LoadConfigurationFromReader(bytes.NewReader(buf.Bytes()))
+	configBytes := buf.Bytes()
+	configMap, err := decodeYAMLToMap(configBytes)
 	if err != nil {
-		h.respondError(w, http.StatusBadRequest, err.Error())
+		h.respondError(w, http.StatusBadRequest, fmt.Sprintf("error reading config data, %v", err))
+		return
+	}
+
+	h.runForecast(w, configBytes, configMap, start, "server.handleForecast")
+}
+
+func (h *handler) handleForecastEditor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	start := time.Now()
+
+	var payload map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to decode configuration: %v", err), "server.handleForecastEditor")
+		return
+	}
+	if payload == nil {
+		payload = make(map[string]interface{})
+	}
+
+	configBytes, err := yaml.Marshal(payload)
+	if err != nil {
+		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to encode configuration: %v", err), "server.handleForecastEditor")
+		return
+	}
+
+	configMap, err := decodeYAMLToMap(configBytes)
+	if err != nil {
+		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to parse configuration: %v", err), "server.handleForecastEditor")
+		return
+	}
+
+	h.runForecast(w, configBytes, configMap, start, "server.handleForecastEditor")
+}
+
+func (h *handler) handleConfigExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to decode configuration: %v", err), "server.handleConfigExport")
+		return
+	}
+	if payload == nil {
+		payload = make(map[string]interface{})
+	}
+
+	yamlBytes, err := yaml.Marshal(payload)
+	if err != nil {
+		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to encode configuration: %v", err), "server.handleConfigExport")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]string{
+		"configYaml": string(yamlBytes),
+	})
+}
+
+func (h *handler) runForecast(w http.ResponseWriter, configBytes []byte, configMap map[string]interface{}, start time.Time, op string) {
+	cfg, err := config.LoadConfigurationFromReader(bytes.NewReader(configBytes))
+	if err != nil {
+		h.respondErrorWithOp(w, http.StatusBadRequest, err.Error(), op)
 		return
 	}
 
 	warnings := cfg.ValidateConfiguration()
 	if err := cfg.ParseDateLists(); err != nil {
-		h.respondError(w, http.StatusBadRequest, fmt.Sprintf("failed to parse dates: %v", err))
+		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to parse dates: %v", err), op)
 		return
 	}
 
 	if err := cfg.ProcessLoans(h.logger); err != nil {
-		h.respondError(w, http.StatusBadRequest, fmt.Sprintf("failed to process loans: %v", err))
+		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to process loans: %v", err), op)
 		return
 	}
 
 	results, err := forecast.GetForecast(h.logger, *cfg)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to compute forecast: %v", err))
+		h.respondErrorWithOp(w, http.StatusInternalServerError, fmt.Sprintf("failed to compute forecast: %v", err), op)
 		return
 	}
 
 	elapsed := time.Since(start)
 
+	if configMap == nil {
+		configMap = make(map[string]interface{})
+	}
+
 	response := forecastResponse{
-		Scenarios: extractScenarioNames(results),
-		Rows:      buildRows(results),
-		CSV:       output.CsvString(results),
-		Warnings:  warnings,
-		Duration:  elapsed.String(),
+		Scenarios:  extractScenarioNames(results),
+		Rows:       buildRows(results),
+		CSV:        output.CsvString(results),
+		Warnings:   warnings,
+		Duration:   elapsed.String(),
+		Config:     configMap,
+		ConfigYAML: string(configBytes),
 	}
 
 	if h.logger != nil {
 		h.logger.Info("forecast computed",
-			zap.String("op", "server.handleForecast"),
+			zap.String("op", op),
 			zap.Int("scenarios", len(response.Scenarios)),
 			zap.Int("rows", len(response.Rows)),
 			zap.Duration("duration", elapsed),
@@ -160,10 +244,30 @@ func (h *handler) handleForecast(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, response)
 }
 
+func decodeYAMLToMap(data []byte) (map[string]interface{}, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return make(map[string]interface{}), nil
+	}
+
+	var result map[string]interface{}
+	if err := yaml.Unmarshal(trimmed, &result); err != nil {
+		return nil, err
+	}
+	if result == nil {
+		result = make(map[string]interface{})
+	}
+	return result, nil
+}
+
 func (h *handler) respondError(w http.ResponseWriter, status int, msg string) {
+	h.respondErrorWithOp(w, status, msg, "server.handleForecast")
+}
+
+func (h *handler) respondErrorWithOp(w http.ResponseWriter, status int, msg string, op string) {
 	if h.logger != nil {
 		h.logger.Error("forecast request failed",
-			zap.String("op", "server.handleForecast"),
+			zap.String("op", op),
 			zap.Int("status", status),
 			zap.String("error", msg),
 		)

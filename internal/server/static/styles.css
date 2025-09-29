@@ -4,6 +4,8 @@
     background-color: #f4f6fb;
     color: #1b1f3b;
     line-height: 1.5;
+    --workspace-sticky-offset: 0px;
+    --config-toolbar-offset: 0px;
 }
 
 body {
@@ -214,6 +216,304 @@ button:disabled {
     font-size: 0.9rem;
 }
 
+.tablist-container {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    margin: -1.75rem -1.75rem 0;
+    padding: 1rem 1.75rem 0.75rem;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(27, 31, 59, 0.08);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    box-shadow: 0 18px 35px -28px rgba(15, 23, 42, 0.55);
+}
+
+.tablist {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.25rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(27, 31, 59, 0.08);
+    margin-bottom: 0.5rem;
+}
+
+.tab-button {
+    border: none;
+    background: transparent;
+    padding: 0.5rem 1.25rem;
+    border-radius: 999px;
+    font-weight: 600;
+    color: rgba(27, 31, 59, 0.6);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tab-button:hover:not(:disabled) {
+    background: rgba(58, 123, 213, 0.12);
+    color: #1b1f3b;
+}
+
+.tab-button.active {
+    background: linear-gradient(135deg, rgba(58, 123, 213, 0.18), rgba(58, 96, 115, 0.18));
+    color: #1b1f3b;
+    box-shadow: inset 0 0 0 1px rgba(58, 123, 213, 0.35);
+}
+
+.tab-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+#upload-panel {
+    padding-top: 2rem;
+}
+
+.results-panel {
+    padding-top: 0;
+}
+
+.config-panel {
+    padding-top: 0;
+    gap: 1.5rem;
+}
+
+.tab-panel.active.config-panel {
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-toolbar {
+    position: sticky;
+    top: var(--workspace-sticky-offset);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem 0 1.25rem;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(27, 31, 59, 0.08);
+    z-index: 12;
+    box-shadow: 0 16px 28px -26px rgba(15, 23, 42, 0.55);
+}
+
+.toolbar-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.editor-toolbar .message {
+    margin-top: 0;
+}
+
+.config-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.editor-section {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(27, 31, 59, 0.08);
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 30px -22px rgba(15, 23, 42, 0.4);
+}
+
+.editor-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.editor-section h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.25rem;
+}
+
+.editor-section p.description {
+    margin: 0 0 1.5rem;
+    color: rgba(27, 31, 59, 0.65);
+}
+
+.editor-section-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.editor-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.editor-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.editor-label {
+    font-weight: 600;
+    color: rgba(27, 31, 59, 0.75);
+}
+
+.editor-field input,
+.editor-field select {
+    padding: 0.6rem 0.75rem;
+    border-radius: 12px;
+    border: 1px solid rgba(27, 31, 59, 0.18);
+    background: rgba(255, 255, 255, 0.85);
+    color: #1b1f3b;
+    font-size: 0.95rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editor-field input::placeholder {
+    color: rgba(27, 31, 59, 0.45);
+}
+
+.editor-field.checkbox-field {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.editor-field.checkbox-field input {
+    width: auto;
+    min-width: 16px;
+    min-height: 16px;
+}
+
+.editor-field.checkbox-field .editor-label {
+    margin: 0;
+}
+
+.editor-field input:focus,
+.editor-field select:focus {
+    outline: none;
+    border-color: rgba(58, 123, 213, 0.65);
+    box-shadow: 0 0 0 4px rgba(58, 123, 213, 0.15);
+}
+
+.editor-card {
+    border: 1px solid rgba(27, 31, 59, 0.08);
+    border-radius: 14px;
+    padding: 1.25rem;
+    background: rgba(255, 255, 255, 0.72);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    box-shadow: 0 12px 30px -24px rgba(15, 23, 42, 0.4);
+}
+
+.editor-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.editor-card-header h4 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.editor-inline-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.editor-inline-actions button {
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    border: none;
+    background: rgba(244, 67, 54, 0.12);
+    color: #a02620;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.editor-inline-actions button:hover {
+    background: rgba(244, 67, 54, 0.2);
+}
+
+.editor-collection {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.collection-actions {
+    margin-top: 0.5rem;
+}
+
+.collection-actions button {
+    border: 1px dashed rgba(58, 123, 213, 0.45);
+    background: rgba(58, 123, 213, 0.08);
+    color: #1b1f3b;
+    border-radius: 12px;
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.collection-actions button:hover {
+    background: rgba(58, 123, 213, 0.14);
+    border-color: rgba(58, 123, 213, 0.75);
+}
+
+.editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+}
+
+.config-panel.sticky-headers .sticky-heading,
+.config-panel.sticky-headers .scenario-card-header {
+    position: sticky;
+    top: calc(var(--workspace-sticky-offset) + var(--config-toolbar-offset));
+    background: rgba(255, 255, 255, 0.97);
+    z-index: 8;
+}
+
+.config-panel.sticky-headers .sticky-heading {
+    padding: 0.4rem 0;
+    margin-bottom: 0.6rem;
+    box-shadow: 0 12px 20px -18px rgba(15, 23, 42, 0.35);
+    border-bottom: 1px solid rgba(27, 31, 59, 0.08);
+}
+
+.config-panel.sticky-headers .scenario-card-header {
+    margin: -1.25rem -1.25rem 0.75rem;
+    padding: 0.75rem 1.25rem;
+    box-shadow: 0 12px 22px -18px rgba(15, 23, 42, 0.4);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    border-bottom: 1px solid rgba(27, 31, 59, 0.08);
+    z-index: 9;
+}
+
 @media (max-width: 720px) {
     .panel {
         padding: 1.25rem;
@@ -222,5 +522,25 @@ button:disabled {
     .results-actions {
         width: 100%;
         justify-content: space-between;
+    }
+
+    .tablist-container {
+        margin: -1.25rem -1.25rem 0;
+        padding: 0.75rem 1.25rem 0.75rem;
+    }
+
+    .tablist {
+        width: 100%;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+    }
+
+    .editor-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .editor-inline-actions {
+        flex-direction: column;
+        align-items: stretch;
     }
 }
