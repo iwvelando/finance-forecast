@@ -913,8 +913,6 @@ function createInputField({
 }) {
 	const wrapper = document.createElement("label");
 	wrapper.className = "editor-field";
- 
-
 	const labelEl = document.createElement("span");
 	labelEl.className = "editor-label";
 	labelEl.textContent = label;
