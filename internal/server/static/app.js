@@ -1437,7 +1437,7 @@ function cloneDeep(value) {
 		try {
 			return structuredClone(value);
 		} catch (error) {
-			// Fallback to JSON method below
+			console.error("structuredClone failed, falling back to JSON method in cloneDeep:", error);
 		}
 	}
 	return JSON.parse(JSON.stringify(value));
