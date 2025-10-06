@@ -1,0 +1,35 @@
+---
+# Pre-tax retirement account configuration (traditional 401k style)
+# Expected 2026-01 balances: cash ≈ 9,000.00, account ≈ 14,889.48.
+# Combined total ≈ 23,889.48.
+startDate: 2024-12
+
+common:
+  startingValue: 7000.00
+  deathDate: 2026-01
+  investments:
+    - name: Traditional 401k
+      startingValue: 10000.00
+      annualReturnRate: 6.0
+      taxRate: 0.0
+      contributionsFromCash: false
+      contributions:
+        - amount: 500.00
+          frequency: 1
+          startDate: 2025-01
+          endDate: 2025-12
+      withdrawals:
+        - amount: 2000.00
+          frequency: 12
+          startDate: 2025-12
+          endDate: 2025-12
+
+scenarios:
+  - name: deterministic pretax investment baseline
+    active: true
+
+logging:
+  level: error
+
+output:
+  format: pretty

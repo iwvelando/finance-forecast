@@ -1,7 +1,8 @@
 package integration
 
 import (
-	"bufio"
+	"encoding/csv"
+	"io"
 	"math"
 	"os"
 	"strconv"
@@ -16,99 +17,142 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestMainIntegrationBaseline tests that the application produces the same results
-// as our baseline captured from the current working version
-func TestMainIntegrationBaseline(t *testing.T) {
-	// Create a no-op logger to avoid debug output during testing
+// TestDeterministicComponentBaselines verifies that the deterministic test configurations
+// remain stable and that the combined configuration equals the sum of its components.
+func TestDeterministicComponentBaselines(t *testing.T) {
+	type scenarioExpectation struct {
+		name   string
+		total  float64
+		liquid float64
+	}
+
+	type baselineCase struct {
+		name         string
+		configPath   string
+		expectations []scenarioExpectation
+		accumulate   bool
+	}
+
+	cases := []baselineCase{
+		{
+			name:       "cash flows",
+			configPath: "../test_cash_flows_config.yaml",
+			expectations: []scenarioExpectation{
+				{name: "deterministic cash flow baseline", total: 17150.00, liquid: 17150.00},
+			},
+			accumulate: true,
+		},
+		{
+			name:       "single loan",
+			configPath: "../test_single_loan_config.yaml",
+			expectations: []scenarioExpectation{
+				{name: "deterministic loan baseline", total: 9672.03, liquid: 9672.03},
+			},
+			accumulate: true,
+		},
+		{
+			name:       "pretax investment",
+			configPath: "../test_pretax_investment_config.yaml",
+			expectations: []scenarioExpectation{
+				{name: "deterministic pretax investment baseline", total: 23889.48, liquid: 9000.00},
+			},
+			accumulate: true,
+		},
+		{
+			name:       "tax-free investment",
+			configPath: "../test_aftertax_taxfree_config.yaml",
+			expectations: []scenarioExpectation{
+				{name: "deterministic tax-free investment baseline", total: 11426.02, liquid: 2218.78},
+			},
+			accumulate: true,
+		},
+		{
+			name:       "taxable investment",
+			configPath: "../test_aftertax_taxed_config.yaml",
+			expectations: []scenarioExpectation{
+				{name: "deterministic taxable investment baseline", total: 16467.96, liquid: 5900.00},
+			},
+			accumulate: true,
+		},
+		{
+			name:       "combined",
+			configPath: "../test_combined_config.yaml",
+			expectations: []scenarioExpectation{
+				{name: "deterministic combined baseline", total: 78605.48, liquid: 43940.81},
+			},
+			accumulate: false,
+		},
+	}
+
+	const tolerance = 0.02
+	fixedTime := time.Date(2024, 12, 15, 0, 0, 0, 0, time.UTC)
 	logger := zap.NewNop()
 
-	// Load and process the example configuration exactly as main() does
-	conf, err := config.LoadConfiguration("../test_config.yaml")
-	if err != nil {
-		t.Fatalf("LoadConfiguration() error = %v", err)
-	}
+	totalSum := 0.0
+	liquidSum := 0.0
 
-	// Use a fixed time for deterministic testing regardless of when the test runs
-	// We use 2025-06-15 as our fixed date for all tests to ensure consistency
-	fixedTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
-
-	err = conf.ParseDateListsWithFixedTime(fixedTime)
-	if err != nil {
-		t.Fatalf("ParseDateLists() error = %v", err)
-	}
-
-	err = conf.ProcessLoans(logger)
-	if err != nil {
-		t.Fatalf("ProcessLoans() error = %v", err)
-	}
-
-	results, err := forecast.GetForecastWithFixedTime(logger, *conf, fixedTime)
-	if err != nil {
-		t.Fatalf("GetForecast() error = %v", err)
-	}
-
-	// Validate we have the expected number of scenarios
-	if len(results) != 3 {
-		t.Errorf("Expected 3 scenarios, got %d", len(results))
-	}
-
-	expectedScenarios := []string{
-		"current path",
-		"new home purchase",
-		"new home purchase with extra principal payments",
-	}
-
-	for i, expected := range expectedScenarios {
-		if i >= len(results) {
-			t.Errorf("Missing scenario: %s", expected)
-			continue
+	for _, c := range cases {
+		conf, err := config.LoadConfiguration(c.configPath)
+		if err != nil {
+			t.Fatalf("%s: LoadConfiguration() error = %v", c.name, err)
 		}
-		if results[i].Name != expected {
-			t.Errorf("Expected scenario %s, got %s", expected, results[i].Name)
+
+		if err := conf.ParseDateListsWithFixedTime(fixedTime); err != nil {
+			t.Fatalf("%s: ParseDateListsWithFixedTime() error = %v", c.name, err)
 		}
-	}
 
-	// Validate baseline values from our CSV output
-	validateBaselineValues(t, results)
-}
+		if err := conf.ProcessLoans(logger); err != nil {
+			t.Fatalf("%s: ProcessLoans() error = %v", c.name, err)
+		}
 
-// validateBaselineValues checks specific key values against our baseline
-func validateBaselineValues(t *testing.T, results []forecast.Forecast) {
-	// These are specific values from our baseline CSV output - we're checking the final month
-	baselineChecks := []struct {
-		scenario    string
-		date        string
-		expectedVal float64
-		tolerance   float64
-	}{
-		{"current path", "2090-01", 295939.66, 1.0},
-		{"new home purchase", "2090-01", 537436.86, 1.0},
-		{"new home purchase with extra principal payments", "2090-01", 559379.68, 1.0},
-	}
+		results, err := forecast.GetForecastWithFixedTime(logger, *conf, fixedTime)
+		if err != nil {
+			t.Fatalf("%s: GetForecastWithFixedTime() error = %v", c.name, err)
+		}
 
-	for _, check := range baselineChecks {
-		var result *forecast.Forecast
-		for i := range results {
-			if results[i].Name == check.scenario {
-				result = &results[i]
-				break
+		if len(results) != len(c.expectations) {
+			t.Fatalf("%s: expected %d scenarios, got %d", c.name, len(c.expectations), len(results))
+		}
+
+		finalMonth := conf.Common.DeathDate
+
+		for _, expect := range c.expectations {
+			scenario := testutil.FindScenario(results, expect.name)
+			if scenario == nil {
+				t.Fatalf("%s: scenario %q not found", c.name, expect.name)
 			}
-		}
 
-		if result == nil {
-			t.Errorf("Scenario '%s' not found in results", check.scenario)
-			continue
-		}
+			totalVal, ok := scenario.Data[finalMonth]
+			if !ok {
+				t.Fatalf("%s: scenario %q missing total for %s", c.name, expect.name, finalMonth)
+			}
 
-		actualVal, exists := result.Data[check.date]
-		if !exists {
-			t.Errorf("Date '%s' not found in scenario '%s'", check.date, check.scenario)
-			continue
-		}
+			liquidVal, ok := scenario.Liquid[finalMonth]
+			if !ok {
+				t.Fatalf("%s: scenario %q missing liquid for %s", c.name, expect.name, finalMonth)
+			}
 
-		if math.Abs(actualVal-check.expectedVal) > check.tolerance {
-			t.Errorf("Scenario '%s' at '%s': expected %.2f, got %.2f",
-				check.scenario, check.date, check.expectedVal, actualVal)
+			if math.Abs(totalVal-expect.total) > tolerance {
+				t.Errorf("%s: scenario %q total mismatch for %s: expected %.2f, got %.2f",
+					c.name, expect.name, finalMonth, expect.total, totalVal)
+			}
+
+			if math.Abs(liquidVal-expect.liquid) > tolerance {
+				t.Errorf("%s: scenario %q liquid mismatch for %s: expected %.2f, got %.2f",
+					c.name, expect.name, finalMonth, expect.liquid, liquidVal)
+			}
+
+			if c.accumulate {
+				totalSum += totalVal
+				liquidSum += liquidVal
+			} else {
+				if math.Abs(totalVal-totalSum) > tolerance {
+					t.Errorf("%s: combined total %.2f differs from component sum %.2f", c.name, totalVal, totalSum)
+				}
+				if math.Abs(liquidVal-liquidSum) > tolerance {
+					t.Errorf("%s: combined liquid %.2f differs from component sum %.2f", c.name, liquidVal, liquidSum)
+				}
+			}
 		}
 	}
 }
@@ -157,52 +201,53 @@ func TestCSVOutputFormat(t *testing.T) {
 		_ = baselineFile.Close()
 	}()
 
-	scanner := bufio.NewScanner(baselineFile)
-
-	// Read header line
-	if !scanner.Scan() {
-		t.Fatalf("Could not read CSV header")
+	reader := csv.NewReader(baselineFile)
+	headerRecord, err := reader.Read()
+	if err != nil {
+		t.Fatalf("Could not read CSV header: %v", err)
 	}
-	header := scanner.Text()
 
-	// Verify header format
 	expectedHeaderParts := []string{
-		`"date"`,
-		`"amount (current path)"`,
-		`"notes (current path)"`,
-		`"amount (new home purchase)"`,
-		`"notes (new home purchase)"`,
-		`"amount (new home purchase with extra principal payments)"`,
-		`"notes (new home purchase with extra principal payments)"`,
+		"date",
+		"liquid (current path)",
+		"total (current path)",
+		"notes (current path)",
+		"liquid (new home purchase)",
+		"total (new home purchase)",
+		"notes (new home purchase)",
+		"liquid (new home purchase with extra principal payments)",
+		"total (new home purchase with extra principal payments)",
+		"notes (new home purchase with extra principal payments)",
 	}
 
-	for _, part := range expectedHeaderParts {
-		if !strings.Contains(header, part) {
-			t.Errorf("CSV header missing expected part: %s", part)
+	if len(headerRecord) != len(expectedHeaderParts) {
+		t.Fatalf("CSV header should have %d fields, got %d", len(expectedHeaderParts), len(headerRecord))
+	}
+
+	for i, part := range expectedHeaderParts {
+		if headerRecord[i] != part {
+			t.Errorf("CSV header mismatch at column %d: expected %q, got %q", i, part, headerRecord[i])
 		}
 	}
 
-	// Read a few data lines to verify format
-	lineCount := 0
-	for scanner.Scan() && lineCount < 5 {
-		line := scanner.Text()
-		parts := strings.Split(line, ",")
-
-		// Should have 7 parts: date, amount1, notes1, amount2, notes2, amount3, notes3
-		if len(parts) != 7 {
-			t.Errorf("CSV line should have 7 parts, got %d: %s", len(parts), line)
+	for lineCount := 0; lineCount < 5; lineCount++ {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Errorf("Error reading baseline CSV: %v", err)
+			break
 		}
 
-		// First part should be a quoted date
-		if !strings.HasPrefix(parts[0], `"20`) {
-			t.Errorf("CSV date should start with quoted year: %s", parts[0])
+		if len(record) != len(expectedHeaderParts) {
+			t.Errorf("CSV record should have %d fields, got %d: %v", len(expectedHeaderParts), len(record), record)
+			continue
 		}
 
-		lineCount++
-	}
-
-	if err := scanner.Err(); err != nil {
-		t.Errorf("Error reading baseline CSV: %v", err)
+		if !strings.HasPrefix(record[0], "20") {
+			t.Errorf("CSV date should start with year prefix: %s", record[0])
+		}
 	}
 }
 
@@ -781,60 +826,53 @@ func TestCSVBaselineConsistency(t *testing.T) {
 		}
 	}()
 
-	scanner := bufio.NewScanner(baselineFile)
-	// Skip header line
-	if !scanner.Scan() {
-		t.Fatalf("Could not read CSV header")
+	reader := csv.NewReader(baselineFile)
+	if _, err := reader.Read(); err != nil {
+		t.Fatalf("Could not read CSV header: %v", err)
 	}
 
 	// Create maps of date -> value for each scenario in the baseline
 	baselineData := make(map[string]map[string]float64)
-
-	// Read baseline data
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Split(line, ",")
-		if len(parts) < 7 {
-			continue // Skip invalid lines
-		}
-
-		// Parse date and amounts
-		date := strings.Trim(parts[0], "\"")
-
-		// Parse amounts for each scenario (columns 1, 3, 5)
-		scenarioAmounts := []float64{}
-		for i := 1; i <= 5; i += 2 {
-			if i >= len(parts) {
-				break
-			}
-			amount := strings.Trim(parts[i], "\"")
-			if amount == "" {
-				continue
-			}
-			val, err := strconv.ParseFloat(amount, 64)
-			if err != nil {
-				t.Logf("Warning: could not parse amount '%s' at column %d: %v", amount, i, err)
-				continue
-			}
-			scenarioAmounts = append(scenarioAmounts, val)
-		}
-
-		// Store values for each scenario
-		if len(scenarioAmounts) > 0 {
-			if baselineData[date] == nil {
-				baselineData[date] = make(map[string]float64)
-			}
-			for i, amount := range scenarioAmounts {
-				if i < len(results) {
-					baselineData[date][results[i].Name] = amount
-				}
-			}
-		}
+	scenarioNames := []string{
+		"current path",
+		"new home purchase",
+		"new home purchase with extra principal payments",
 	}
 
-	if err := scanner.Err(); err != nil {
-		t.Errorf("Error reading baseline CSV: %v", err)
-		return
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Errorf("Error reading baseline CSV: %v", err)
+			return
+		}
+		if len(record) < 10 {
+			continue
+		}
+
+		date := record[0]
+		if baselineData[date] == nil {
+			baselineData[date] = make(map[string]float64)
+		}
+
+		for idx, scenario := range scenarioNames {
+			fieldIndex := 2 + idx*3
+			if fieldIndex >= len(record) {
+				continue
+			}
+			amountStr := record[fieldIndex]
+			if amountStr == "" {
+				continue
+			}
+			val, err := strconv.ParseFloat(amountStr, 64)
+			if err != nil {
+				t.Logf("Warning: could not parse amount '%s' for scenario %s at %s: %v", amountStr, scenario, date, err)
+				continue
+			}
+			baselineData[date][scenario] = val
+		}
 	}
 
 	// Compare generated results with baseline

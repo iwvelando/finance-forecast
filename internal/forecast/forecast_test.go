@@ -1,6 +1,8 @@
 package forecast
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -306,9 +308,16 @@ func TestGetForecastRealistic(t *testing.T) {
 
 		// Verify starting value using fixed date rather than time.Now()
 		startDate := fixedTime.Format(config.DateTimeLayout)
-		if results[i].Data[startDate] != 30000.0 {
-			t.Errorf("Scenario %s: expected starting value 30000.0, got %.2f",
-				expected, results[i].Data[startDate])
+		expectedStart := conf.Common.StartingValue
+		for _, inv := range conf.Common.Investments {
+			expectedStart += inv.StartingValue
+		}
+		for _, inv := range conf.Scenarios[i].Investments {
+			expectedStart += inv.StartingValue
+		}
+		if math.Abs(results[i].Data[startDate]-expectedStart) > 1e-6 {
+			t.Errorf("Scenario %s: expected starting value %.2f, got %.2f",
+				expected, expectedStart, results[i].Data[startDate])
 		}
 	}
 }
@@ -359,5 +368,196 @@ func TestGetForecastWithConfiguredStartDate(t *testing.T) {
 	// Verify we have data for subsequent months
 	if _, exists := result.Data["2025-07"]; !exists {
 		t.Errorf("Expected data for month after start date")
+	}
+}
+
+func TestGetForecastWithInvestments(t *testing.T) {
+	logger := zap.NewNop()
+
+	conf := config.Configuration{
+		Common: config.Common{
+			StartingValue: 1000,
+			DeathDate:     "2025-08",
+			Investments: []config.Investment{
+				{
+					Name:             "Common Fund",
+					StartingValue:    500,
+					AnnualReturnRate: 12,
+				},
+			},
+		},
+		Scenarios: []config.Scenario{
+			{
+				Name:   "Investment Scenario",
+				Active: true,
+				Investments: []config.Investment{
+					{
+						Name:             "Scenario Fund",
+						StartingValue:    200,
+						AnnualReturnRate: 12,
+						Contributions: []config.Event{
+							{Amount: 100},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Assign date lists for contributions
+	conf.Scenarios[0].Investments[0].Contributions[0].DateList = []time.Time{
+		datetime.MustParseTime(config.DateTimeLayout, "2025-07"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-08"),
+	}
+
+	fixedTime := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	results, err := GetForecastWithFixedTime(logger, conf, fixedTime)
+	if err != nil {
+		t.Fatalf("GetForecastWithFixedTime() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 forecast result, got %d", len(results))
+	}
+
+	result := results[0]
+	startDate := fixedTime.Format(config.DateTimeLayout)
+	if val := result.Data[startDate]; math.Abs(val-1700) > 1e-9 {
+		t.Fatalf("starting value = %.2f, want 1700", val)
+	}
+
+	firstMonth := "2025-07"
+	expected := 1700 + 108.0 // 500 * 1% = 5 growth; scenario investment adds 100 contribution + 3 growth
+	if val := result.Data[firstMonth]; math.Abs(val-expected) > 1e-6 {
+		t.Errorf("balance for %s = %.2f, want %.2f", firstMonth, val, expected)
+	}
+}
+
+func TestGetForecastWithInvestmentsContributionReducingIncome(t *testing.T) {
+	logger := zap.NewNop()
+
+	conf := config.Configuration{
+		Common: config.Common{
+			StartingValue: 1000,
+			DeathDate:     "2025-08",
+		},
+		Scenarios: []config.Scenario{
+			{
+				Name:   "Investment Scenario",
+				Active: true,
+				Investments: []config.Investment{
+					{
+						Name:                  "Traditional 401k",
+						StartingValue:         0,
+						AnnualReturnRate:      0,
+						ContributionsFromCash: true,
+						Contributions: []config.Event{
+							{Amount: 100},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	conf.Scenarios[0].Investments[0].Contributions[0].DateList = []time.Time{
+		datetime.MustParseTime(config.DateTimeLayout, "2025-07"),
+		datetime.MustParseTime(config.DateTimeLayout, "2025-08"),
+	}
+
+	fixedTime := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	results, err := GetForecastWithFixedTime(logger, conf, fixedTime)
+	if err != nil {
+		t.Fatalf("GetForecastWithFixedTime() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 forecast result, got %d", len(results))
+	}
+
+	result := results[0]
+	startDate := fixedTime.Format(config.DateTimeLayout)
+	if val := result.Data[startDate]; math.Abs(val-1000) > 1e-9 {
+		t.Fatalf("starting value = %.2f, want 1000", val)
+	}
+
+	if val := result.Data["2025-07"]; math.Abs(val-1000) > 1e-9 {
+		t.Errorf("balance for 2025-07 = %.2f, want 1000 (contributions offset by income)", val)
+	}
+
+	if val := result.Data["2025-08"]; math.Abs(val-1000) > 1e-9 {
+		t.Errorf("balance for 2025-08 = %.2f, want 1000 (contributions offset by income)", val)
+	}
+
+	notes := result.Notes["2025-07"]
+	found := false
+	for _, note := range notes {
+		if strings.Contains(note, "contribution (reduces cash balance) +100.00") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected note describing contribution sourced from income, got %v", notes)
+	}
+}
+
+func TestInvestmentNotesShowGrossGrowth(t *testing.T) {
+	logger := zap.NewNop()
+
+	conf := config.Configuration{
+		Common: config.Common{
+			StartingValue: 0,
+			DeathDate:     "2025-02",
+		},
+		Scenarios: []config.Scenario{
+			{
+				Name:   "Growth Scenario",
+				Active: true,
+				Investments: []config.Investment{
+					{
+						Name:             "Brokerage",
+						StartingValue:    1000,
+						AnnualReturnRate: 12,
+						TaxRate:          10,
+					},
+				},
+			},
+		},
+	}
+
+	fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	results, err := GetForecastWithFixedTime(logger, conf, fixedTime)
+	if err != nil {
+		t.Fatalf("GetForecastWithFixedTime() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 forecast result, got %d", len(results))
+	}
+
+	notes := results[0].Notes["2025-02"]
+	if len(notes) == 0 {
+		t.Fatalf("expected notes for 2025-02, got none")
+	}
+
+	var sawGrowth, sawTax bool
+	for _, note := range notes {
+		if strings.Contains(note, "growth +10.00") {
+			sawGrowth = true
+		}
+		if strings.Contains(note, "tax 1.00") {
+			sawTax = true
+		}
+	}
+
+	if !sawGrowth {
+		t.Errorf("expected growth note to show gross amount, notes: %v", notes)
+	}
+	if !sawTax {
+		t.Errorf("expected tax note to show withheld amount, notes: %v", notes)
 	}
 }

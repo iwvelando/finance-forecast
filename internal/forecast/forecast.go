@@ -4,6 +4,7 @@ package forecast
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
@@ -15,9 +16,10 @@ import (
 
 // Forecast holds all information related to a specific forecast.
 type Forecast struct {
-	Name  string
-	Data  map[string]float64
-	Notes map[string][]string
+	Name   string
+	Data   map[string]float64
+	Liquid map[string]float64
+	Notes  map[string][]string
 }
 
 // GetForecast processes the Forecasts for all Scenarios.
@@ -56,23 +58,34 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 		var result Forecast
 		result.Name = scenario.Name
 		result.Data = make(map[string]float64)
+		result.Liquid = make(map[string]float64)
 		result.Notes = make(map[string][]string)
-		result.Data[startDate] = conf.Common.StartingValue
 		previousDate := startDate
 		// Create a forecast engine to process monthly changes
 		forecastEngine := finance.NewForecastEngine(logger)
+
+		scenarioEvents := adapters.EventsToFinanceEvents(scenario.Events)
+		commonEvents := adapters.EventsToFinanceEvents(conf.Common.Events)
+		scenarioLoans := adapters.LoansToFinanceLoans(scenario.Loans)
+		commonLoans := adapters.LoansToFinanceLoans(conf.Common.Loans)
+		scenarioInvestments := adapters.InvestmentsToFinanceInvestments(scenario.Investments)
+		commonInvestments := adapters.InvestmentsToFinanceInvestments(conf.Common.Investments)
+
+		scenarioInvestmentStates := initializeInvestmentStates(scenarioInvestments)
+		commonInvestmentStates := initializeInvestmentStates(commonInvestments)
+
+		cashBalance := conf.Common.StartingValue
+		scenarioInvestmentTotal := sumInvestmentStartingValues(scenarioInvestments)
+		commonInvestmentTotal := sumInvestmentStartingValues(commonInvestments)
+		initialInvestmentBalance := scenarioInvestmentTotal + commonInvestmentTotal
+		result.Liquid[startDate] = cashBalance
+		result.Data[startDate] = cashBalance + initialInvestmentBalance
 
 		for {
 			date, err := datetime.OffsetDate(previousDate, config.DateTimeLayout, 1)
 			if err != nil {
 				return results, err
 			}
-
-			// Convert events and loans using adapters
-			scenarioEvents := adapters.EventsToFinanceEvents(scenario.Events)
-			commonEvents := adapters.EventsToFinanceEvents(conf.Common.Events)
-			scenarioLoans := adapters.LoansToFinanceLoans(scenario.Loans)
-			commonLoans := adapters.LoansToFinanceLoans(conf.Common.Loans)
 
 			// Process scenario events
 			scenarioChanges, scenarioErr := forecastEngine.ProcessMonthlyChanges(date, scenarioEvents, nil, config.DateTimeLayout)
@@ -86,8 +99,27 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 				return results, commonErr
 			}
 
+			// Process investments
+			scenarioInvestmentChange, scenarioInvestmentDetails, scenarioInvestErr := forecastEngine.ProcessInvestments(date, scenarioInvestments, config.DateTimeLayout, scenarioInvestmentStates)
+			if scenarioInvestErr != nil {
+				return results, scenarioInvestErr
+			}
+
+			commonInvestmentChange, commonInvestmentDetails, commonInvestErr := forecastEngine.ProcessInvestments(date, commonInvestments, config.DateTimeLayout, commonInvestmentStates)
+			if commonInvestErr != nil {
+				return results, commonInvestErr
+			}
+
+			scenarioContributionOffset := sumIncomeReducingContributions(scenarioInvestmentDetails)
+			commonContributionOffset := sumIncomeReducingContributions(commonInvestmentDetails)
+			scenarioWithdrawalCash := sumWithdrawals(scenarioInvestmentDetails)
+			commonWithdrawalCash := sumWithdrawals(commonInvestmentDetails)
+
+			addInvestmentNotes(result.Notes, date, "scenario", scenarioInvestmentDetails)
+			addInvestmentNotes(result.Notes, date, "common", commonInvestmentDetails)
+
 			// Check for early payoff thresholds
-			projectedBalance := result.Data[previousDate] + scenarioChanges + commonChanges
+			projectedBalance := result.Data[previousDate] + scenarioChanges + commonChanges - scenarioContributionOffset - commonContributionOffset + scenarioInvestmentChange + commonInvestmentChange
 
 			for j := range conf.Scenarios[i].Loans {
 				note, payoffErr := conf.Scenarios[i].Loans[j].CheckEarlyPayoffThreshold(date, conf.Common.DeathDate, projectedBalance)
@@ -120,8 +152,17 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 				return results, commonLoansErr
 			}
 
-			// Update the balance
-			result.Data[date] = result.Data[previousDate] + scenarioChanges + commonChanges + scenarioLoansChanges + commonLoansChanges
+			cashDelta := scenarioChanges + commonChanges + scenarioLoansChanges + commonLoansChanges
+			cashDelta -= scenarioContributionOffset + commonContributionOffset
+			cashDelta += scenarioWithdrawalCash + commonWithdrawalCash
+			cashBalance += cashDelta
+
+			scenarioInvestmentTotal += scenarioInvestmentChange
+			commonInvestmentTotal += commonInvestmentChange
+			totalInvestments := scenarioInvestmentTotal + commonInvestmentTotal
+
+			result.Liquid[date] = cashBalance
+			result.Data[date] = cashBalance + totalInvestments
 			if date == conf.Common.DeathDate {
 				break
 			}
@@ -131,4 +172,96 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 	}
 
 	return results, nil
+}
+
+func initializeInvestmentStates(investments []finance.Investment) map[string]*finance.InvestmentState {
+	states := make(map[string]*finance.InvestmentState)
+	for _, inv := range investments {
+		if inv == nil {
+			continue
+		}
+		states[inv.GetName()] = &finance.InvestmentState{CurrentValue: inv.GetStartingValue()}
+	}
+	return states
+}
+
+func sumInvestmentStartingValues(investments []finance.Investment) float64 {
+	total := 0.0
+	for _, inv := range investments {
+		if inv == nil {
+			continue
+		}
+		total += inv.GetStartingValue()
+	}
+	return total
+}
+
+func addInvestmentNotes(notes map[string][]string, date, scope string, changes []finance.InvestmentChange) {
+	if len(changes) == 0 {
+		return
+	}
+
+	for _, change := range changes {
+		var parts []string
+		if change.Contribution != 0 {
+			label := "contribution"
+			if change.ContributionFromCash {
+				label = "contribution (reduces cash balance)"
+			}
+			parts = append(parts, fmt.Sprintf("%s %+0.2f", label, change.Contribution))
+		}
+		if change.Withdrawal != 0 || change.WithdrawalPercentage != 0 {
+			note := fmt.Sprintf("withdrawal %+0.2f", change.Withdrawal)
+			if change.WithdrawalPercentage != 0 {
+				note = fmt.Sprintf("withdrawal (%0.2f%%) %+0.2f", change.WithdrawalPercentage, change.Withdrawal)
+			}
+			parts = append(parts, note)
+		}
+		growthDisplay := change.GrowthBeforeTax
+		if growthDisplay == 0 {
+			growthDisplay = change.Growth
+		}
+		if growthDisplay != 0 {
+			parts = append(parts, fmt.Sprintf("growth %+0.2f", growthDisplay))
+		}
+		if change.Tax != 0 {
+			parts = append(parts, fmt.Sprintf("tax %.2f", change.Tax))
+		}
+
+		if len(parts) == 0 {
+			continue
+		}
+
+		label := change.Name
+		if scope != "" {
+			if label != "" {
+				label = fmt.Sprintf("%s %s", scope, label)
+			} else {
+				label = scope
+			}
+		}
+		if label == "" {
+			label = "investment"
+		}
+
+		notes[date] = append(notes[date], fmt.Sprintf("%s: %s", label, strings.Join(parts, ", ")))
+	}
+}
+
+func sumIncomeReducingContributions(changes []finance.InvestmentChange) float64 {
+	total := 0.0
+	for _, change := range changes {
+		if change.ContributionFromCash {
+			total += change.Contribution
+		}
+	}
+	return total
+}
+
+func sumWithdrawals(changes []finance.InvestmentChange) float64 {
+	total := 0.0
+	for _, change := range changes {
+		total += change.Withdrawal
+	}
+	return total
 }

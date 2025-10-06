@@ -1,11 +1,10 @@
 ---
----
 # Example Configuration for Finance Forecast
 # Copy this file to config.yaml and modify as needed
-
+# Finance Forecast example configuration file
 # Optional: Set a specific start date for the simulation (YYYY-MM format)
 # If not specified, the simulation will start from the current month
-# startDate: 2025-01
+startDate: 2025-06
 
 # Logging configuration (optional)
 logging:
@@ -60,6 +59,30 @@ common:
       # term: this is the loan term in months.
       term: 72
       startDate: 2020-01
+  investments:
+    - name: Brokerage account
+      startingValue: 25000.00
+      annualReturnRate: 6.5
+      taxRate: 15.0
+      contributions:
+        - amount: 500.00
+          frequency: 1
+          startDate: 2025-01
+      withdrawals:
+        # Specify either a fixed amount or a percentage for withdrawals.
+        - amount: 2000.00
+          frequency: 12
+          startDate: 2035-12
+          endDate: 2065-12
+    - name: Retirement drawdown
+      startingValue: 500000.00
+      annualReturnRate: 5.0
+      withdrawals:
+        # Percentage withdrawals apply after growth and contributions.
+        - percentage: 4.0
+          frequency: 12
+          startDate: 2035-01
+          endDate: 2065-12
 scenarios:
   - name: current path
     # active: this allows disabling scenarios.
@@ -103,6 +126,15 @@ scenarios:
         # balance minus the estimated loan payoff amount is equal to or greater
         # than this threshold the simulation will pay off the loan early.
         earlyPayoffThreshold: 5000.00
+    investments:
+      - name: Retirement savings
+        startingValue: 15000.00
+        annualReturnRate: 7.0
+        contributionsFromCash: true
+        contributions:
+          - amount: 750.00
+            frequency: 1
+            startDate: 2025-01
   - name: new home purchase
     active: true
     events:
@@ -148,6 +180,15 @@ scenarios:
         startDate: 2022-06
         escrow: 600.00
         earlyPayoffThreshold: 5000.00
+    investments:
+      - name: Retirement savings
+        startingValue: 15000.00
+        annualReturnRate: 7.0
+        contributionsFromCash: true
+        contributions:
+          - amount: 750.00
+            frequency: 1
+            startDate: 2025-01
   - name: new home purchase with extra principal payments
     active: true
     events:
@@ -161,6 +202,14 @@ scenarios:
         startDate: 2020-10
         endDate: 2050-01
     loans:
+    investments:
+      - name: Retirement savings
+        startingValue: 15000.00
+        annualReturnRate: 7.0
+        contributions:
+          - amount: 750.00
+            frequency: 1
+            startDate: 2025-01
       - name: 1234 Street Address
         principal: 150000.00
         downPayment: 10000.00

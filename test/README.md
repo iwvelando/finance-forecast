@@ -7,7 +7,13 @@ This directory contains test artifacts for the finance-forecast project.
 ```
 test/
 ├── README.md              # This file
-├── test_config.yaml       # Dedicated test configuration
+├── test_aftertax_taxed_config.yaml       # Deterministic taxable brokerage baseline
+├── test_aftertax_taxfree_config.yaml     # Deterministic tax-free (Roth) baseline
+├── test_cash_flows_config.yaml           # Deterministic cash-flow baseline
+├── test_combined_config.yaml             # Union of deterministic baseline components
+├── test_config.yaml       # Dedicated legacy regression configuration
+├── test_pretax_investment_config.yaml    # Deterministic pre-tax investment baseline
+├── test_single_loan_config.yaml          # Deterministic single-loan baseline
 ├── baseline/              # Test baseline and reference files
 ├── docs/                  # Test documentation and reports
 ├── logs/                  # Test execution logs and output
@@ -29,10 +35,11 @@ make test-performance
 
 ## Test Configuration
 
-The `test_config.yaml` file is used by all automated tests. Do not modify this file unless you understand the impact on test baselines.
+The deterministic baseline files (`test_*_config.yaml`) provide isolated, verifiable scenarios that the integration tests use to guard core financial calculations. The legacy `test_config.yaml` is still used for regression coverage in other tests. Do not modify these files unless you also update the documented projections.
 
 ### Configuration Files
-- **Tests**: Use `test/test_config.yaml`
+- **Deterministic Baselines**: Use the `test/test_*_config.yaml` files introduced for integration tests
+- **Legacy Regression Tests**: Use `test/test_config.yaml`
 - **Documentation/Examples**: Use `config.yaml.example`
 - **Application Runtime**: User provides their own config file
 

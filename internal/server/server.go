@@ -79,7 +79,8 @@ type forecastRow struct {
 }
 
 type scenarioValue struct {
-	Amount *float64 `json:"amount,omitempty"`
+	Liquid *float64 `json:"liquid,omitempty"`
+	Total  *float64 `json:"total,omitempty"`
 	Notes  []string `json:"notes,omitempty"`
 }
 
@@ -368,11 +369,26 @@ func buildRows(results []forecast.Forecast) []forecastRow {
 	for _, date := range dates {
 		row := forecastRow{Date: date}
 		for _, scenario := range results {
-			if balance, ok := scenario.Data[date]; ok {
-				value := balance
-				notes := scenario.Notes[date]
+			liquidVal, liquidOK := scenario.Liquid[date]
+			totalVal, totalOK := scenario.Data[date]
+			notes := scenario.Notes[date]
+
+			var liquidPtr *float64
+			if liquidOK {
+				v := liquidVal
+				liquidPtr = &v
+			}
+
+			var totalPtr *float64
+			if totalOK {
+				v := totalVal
+				totalPtr = &v
+			}
+
+			if liquidPtr != nil || totalPtr != nil || len(notes) > 0 {
 				row.Values = append(row.Values, scenarioValue{
-					Amount: &value,
+					Liquid: liquidPtr,
+					Total:  totalPtr,
 					Notes:  normalizeNotes(notes),
 				})
 			} else {

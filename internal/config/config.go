@@ -44,24 +44,27 @@ type Common struct {
 	DeathDate     string
 	Events        []Event
 	Loans         []Loan
+	Investments   []Investment
 }
 
 // Scenario holds all events and loans for a given scenario.
 type Scenario struct {
-	Name   string
-	Active bool
-	Events []Event
-	Loans  []Loan
+	Name        string
+	Active      bool
+	Events      []Event
+	Loans       []Loan
+	Investments []Investment
 }
 
 // Event indicates a financial event.
 type Event struct {
-	Name      string
-	Amount    float64
-	StartDate string
-	EndDate   string
-	Frequency int // months
-	DateList  []time.Time
+	Name       string
+	Amount     float64
+	Percentage float64 `yaml:"percentage,omitempty"`
+	StartDate  string
+	EndDate    string
+	Frequency  int // months
+	DateList   []time.Time
 }
 
 // LoadConfiguration takes a file path as input and loads the YAML-formatted
@@ -134,6 +137,12 @@ func (conf *Configuration) ParseDateListsWithFixedTime(fixedTime time.Time) erro
 				return err
 			}
 		}
+		for j := range scenario.Investments {
+			err := conf.Scenarios[i].Investments[j].FormDateListsWithFixedTime(*conf, fixedTime)
+			if err != nil {
+				return err
+			}
+		}
 		// Check for extra principal payments within loans.
 		for j, loan := range scenario.Loans {
 			for k := range loan.ExtraPrincipalPayments {
@@ -148,6 +157,13 @@ func (conf *Configuration) ParseDateListsWithFixedTime(fixedTime time.Time) erro
 	// Next handle the parsing for the Common Events.
 	for i := range conf.Common.Events {
 		err := conf.Common.Events[i].FormDateListWithFixedTime(*conf, fixedTime)
+		if err != nil {
+			return err
+		}
+	}
+
+	for i := range conf.Common.Investments {
+		err := conf.Common.Investments[i].FormDateListsWithFixedTime(*conf, fixedTime)
 		if err != nil {
 			return err
 		}

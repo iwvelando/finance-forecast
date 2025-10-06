@@ -56,20 +56,28 @@ func PrettyFormat(results []forecast.Forecast) {
 	}
 	sort.Strings(dates)
 
-	// Format output in original style
+	// Format output with liquid and total columns
 	for _, scenario := range results {
 		fmt.Printf("--- Results for scenario %s ---\n", scenario.Name)
-		fmt.Printf("Date    | Amount        | Notes\n")
-		fmt.Printf("____    | _____________ | _____\n")
+		fmt.Printf("Date    | Liquid Net Worth | Total Net Worth | Notes\n")
+		fmt.Printf("____    | ________________ | _______________ | _____\n")
 
 		for _, date := range dates {
-			if balance, exists := scenario.Data[date]; exists {
-				fmt.Printf("%s | $%s | ", date, formatCurrency(balance))
-				if notes, hasNotes := scenario.Notes[date]; hasNotes && len(notes) > 0 {
-					fmt.Printf("%s", strings.Join(notes, ", "))
-				}
-				fmt.Println()
+			liquidDisplay := "—"
+			if liquid, ok := scenario.Liquid[date]; ok {
+				liquidDisplay = "$" + formatCurrency(liquid)
 			}
+
+			totalDisplay := "—"
+			if total, ok := scenario.Data[date]; ok {
+				totalDisplay = "$" + formatCurrency(total)
+			}
+
+			fmt.Printf("%s | %s | %s | ", date, liquidDisplay, totalDisplay)
+			if notes, hasNotes := scenario.Notes[date]; hasNotes && len(notes) > 0 {
+				fmt.Printf("%s", strings.Join(notes, ", "))
+			}
+			fmt.Println()
 		}
 		fmt.Println() // Extra blank line between scenarios
 	}
@@ -95,7 +103,7 @@ func CsvString(results []forecast.Forecast) string {
 // buildCsvLines creates the ordered CSV lines shared by CsvFormat and CsvString.
 func buildCsvLines(results []forecast.Forecast) []string {
 	if len(results) == 0 {
-		return []string{"Date,Scenario,Amount,Notes"}
+		return []string{"Date,Scenario,Liquid,Total,Notes"}
 	}
 
 	allDates := make(map[string]bool)
@@ -113,7 +121,8 @@ func buildCsvLines(results []forecast.Forecast) []string {
 
 	header := []string{"\"date\""}
 	for _, scenario := range results {
-		header = append(header, fmt.Sprintf("\"amount (%s)\"", scenario.Name))
+		header = append(header, fmt.Sprintf("\"liquid (%s)\"", scenario.Name))
+		header = append(header, fmt.Sprintf("\"total (%s)\"", scenario.Name))
 		header = append(header, fmt.Sprintf("\"notes (%s)\"", scenario.Name))
 	}
 
@@ -122,15 +131,21 @@ func buildCsvLines(results []forecast.Forecast) []string {
 	for _, date := range dates {
 		row := []string{fmt.Sprintf("\"%s\"", date)}
 		for _, scenario := range results {
-			if balance, exists := scenario.Data[date]; exists {
-				row = append(row, fmt.Sprintf("\"%.2f\"", balance))
-				if notes, hasNotes := scenario.Notes[date]; hasNotes && len(notes) > 0 {
-					row = append(row, fmt.Sprintf("\"%s\"", strings.Join(notes, ",")))
-				} else {
-					row = append(row, "\"\"")
-				}
+			if liquid, lOK := scenario.Liquid[date]; lOK {
+				row = append(row, fmt.Sprintf("\"%.2f\"", liquid))
 			} else {
 				row = append(row, "\"\"")
+			}
+
+			if total, tOK := scenario.Data[date]; tOK {
+				row = append(row, fmt.Sprintf("\"%.2f\"", total))
+			} else {
+				row = append(row, "\"\"")
+			}
+
+			if notes, hasNotes := scenario.Notes[date]; hasNotes && len(notes) > 0 {
+				row = append(row, fmt.Sprintf("\"%s\"", strings.Join(notes, ",")))
+			} else {
 				row = append(row, "\"\"")
 			}
 		}

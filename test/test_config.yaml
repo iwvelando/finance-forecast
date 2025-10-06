@@ -1,9 +1,10 @@
+---
 # Test configuration file for finance-forecast tests
-# This file contains the same structure as config.yaml.example but optimized for testing
-# DO NOT modify this file unless you understand the impact on test baseline values
+# This file mirrors config.yaml.example but uses smaller values for testing.
+# Do not modify unless you understand how changes affect baseline values.
 
 # Optional: Set a specific start date for the simulation (YYYY-MM format)
-# startDate: 2025-01
+startDate: 2025-06
 
 common:
   startingValue: 30000.00
@@ -27,6 +28,19 @@ common:
       interestRate: 3.1
       term: 72
       startDate: 2020-01
+  investments:
+    - name: Brokerage account
+      startingValue: 10000.00
+      annualReturnRate: 6.0
+      taxRate: 15.0
+      contributions:
+        - amount: 400.00
+          frequency: 1
+          startDate: 2025-07
+      withdrawals:
+        - amount: 5000.00
+          frequency: 60
+          startDate: 2045-07
 
 scenarios:
   - name: current path
@@ -52,6 +66,15 @@ scenarios:
         mortgageInsurance: 50.00
         mortgageInsuranceCutoff: 78.00
         earlyPayoffThreshold: 5000.00
+    investments:
+      - name: Retirement savings
+        startingValue: 8000.00
+        annualReturnRate: 6.5
+        contributionsFromCash: true
+        contributions:
+          - amount: 350.00
+            frequency: 1
+            startDate: 2025-07
 
   - name: new home purchase
     active: true
@@ -87,6 +110,15 @@ scenarios:
         startDate: 2022-06
         escrow: 600.00
         earlyPayoffThreshold: 5000.00
+    investments:
+      - name: Retirement savings
+        startingValue: 8000.00
+        annualReturnRate: 6.5
+        contributionsFromCash: true
+        contributions:
+          - amount: 350.00
+            frequency: 1
+            startDate: 2025-07
 
   - name: new home purchase with extra principal payments
     active: true
@@ -130,6 +162,14 @@ scenarios:
             frequency: 1
             startDate: 2023-06
             endDate: 2023-06
+    investments:
+      - name: Retirement savings
+        startingValue: 8000.00
+        annualReturnRate: 6.5
+        contributions:
+          - amount: 350.00
+            frequency: 1
+            startDate: 2025-07
 
 # Logging configuration for tests
 logging:

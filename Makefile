@@ -21,6 +21,7 @@ LDFLAGS := -ldflags "-X main.version=$(shell git describe --tags --always --dirt
 TEST_FLAGS := -race
 COVERAGE_FILE := $(TEST_DIR)/logs/coverage.out
 COVERAGE_HTML := $(TEST_DIR)/logs/coverage.html
+YAML_FILES := $(shell find . -type f \( -name '*.yaml' -o -name '*.yaml.example' \))
 
 # Default target
 .PHONY: all
@@ -46,7 +47,9 @@ help:
 	@echo "  deps                 - Download and verify dependencies"
 	@echo "  fmt                  - Format Go source code"
 	@echo "  vet                  - Run go vet"
-	@echo "  lint                 - Run golangci-lint (if available)"
+	@echo "  lint                 - Run all linters (Go + YAML)"
+	@echo "  go-lint              - Run golangci-lint (if available)"
+	@echo "  yamllint             - Run yamllint on all YAML files"
 	@echo "  install              - Install the binary to GOPATH/bin"
 	@echo "  dev-setup            - Set up development environment"
 	@echo "  check                - Run all quality checks"
@@ -112,21 +115,25 @@ vet:
 	@echo "Running go vet..."
 	$(GOCMD) vet ./...
 
-.PHONY: lint
-lint:
-	@echo "Running linter..."
+.PHONY: go-lint
+go-lint:
+	@echo "Running Go linter..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run; \
 	else \
-		echo "golangci-lint not found, skipping lint check"; \
+		echo "golangci-lint not found, skipping Go lint check"; \
 		echo "Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
 
+.PHONY: lint
+lint: go-lint yamllint
+	@echo "All linters completed!"
+
 .PHONY: yamllint
 yamllint:
-	@echo "Running yamllint on example YAML configs..."
+	@echo "Running yamllint on all YAML files..."
 	@if command -v yamllint >/dev/null 2>&1; then \
-		yamllint config.yaml.example server-config.yaml.example; \
+		yamllint $(YAML_FILES); \
 	else \
 		echo "yamllint not found, skipping YAML lint check"; \
 		echo "See dev-setup target for installation instructions"; \
@@ -172,7 +179,7 @@ dev-setup: deps
 	@echo "Development environment ready!"
 
 .PHONY: check
-check: fmt vet lint yamllint test-all
+check: fmt vet lint test-all
 	@echo "All checks passed!"
 
 .PHONY: run-example

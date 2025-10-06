@@ -19,6 +19,9 @@ func TestPrettyFormat(t *testing.T) {
 			Data: map[string]float64{
 				"2025-01": 1000.00,
 			},
+			Liquid: map[string]float64{
+				"2025-01": 750.00,
+			},
 			Notes: map[string][]string{
 				"2025-01": {"Test note"},
 			},
@@ -39,18 +42,21 @@ func TestPrettyFormat(t *testing.T) {
 	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
-	// Should contain the original format elements
+	// Should contain the expected format elements
 	if !strings.Contains(output, "--- Results for scenario Test Scenario ---") {
 		t.Errorf("PrettyFormat missing scenario header")
 	}
-	if !strings.Contains(output, "Date    | Amount        | Notes") {
+	if !strings.Contains(output, "Date    | Liquid Net Worth | Total Net Worth | Notes") {
 		t.Errorf("PrettyFormat missing table header")
 	}
-	if !strings.Contains(output, "____    | _____________ | _____") {
+	if !strings.Contains(output, "____    | ________________ | _______________ | _____") {
 		t.Errorf("PrettyFormat missing table separator")
 	}
+	if !strings.Contains(output, "$750.00") {
+		t.Errorf("PrettyFormat missing liquid column value")
+	}
 	if !strings.Contains(output, "$1,000.00") {
-		t.Errorf("PrettyFormat missing formatted amount with commas")
+		t.Errorf("PrettyFormat missing total column value")
 	}
 	if !strings.Contains(output, "Test note") {
 		t.Errorf("PrettyFormat missing note")
@@ -64,6 +70,9 @@ func TestPrettyFormatSingleScenario(t *testing.T) {
 			Name: "Single Scenario",
 			Data: map[string]float64{
 				"2025-01": 1000.00,
+			},
+			Liquid: map[string]float64{
+				"2025-01": 600.00,
 			},
 			Notes: map[string][]string{
 				"2025-01": {"Single note"},
@@ -92,10 +101,13 @@ func TestPrettyFormatSingleScenario(t *testing.T) {
 	if !strings.Contains(output, "$1,000.00") {
 		t.Errorf("PrettyFormat missing formatted amount")
 	}
+	if !strings.Contains(output, "$600.00") {
+		t.Errorf("PrettyFormat missing liquid column value")
+	}
 	if !strings.Contains(output, "Single note") {
 		t.Errorf("PrettyFormat missing note")
 	}
-	if !strings.Contains(output, "Date    | Amount        | Notes") {
+	if !strings.Contains(output, "Date    | Liquid Net Worth | Total Net Worth | Notes") {
 		t.Errorf("PrettyFormat missing table header")
 	}
 }
@@ -133,6 +145,10 @@ func TestCsvFormat(t *testing.T) {
 				"2025-01": 1000.00,
 				"2025-02": 1500.50,
 			},
+			Liquid: map[string]float64{
+				"2025-01": 700.25,
+				"2025-02": 1200.75,
+			},
 			Notes: map[string][]string{
 				"2025-01": {"Note A1"},
 				"2025-02": {"Note A2", "Additional note"},
@@ -143,6 +159,10 @@ func TestCsvFormat(t *testing.T) {
 			Data: map[string]float64{
 				"2025-01": 900.00,
 				"2025-02": 1200.25,
+			},
+			Liquid: map[string]float64{
+				"2025-01": 650.00,
+				"2025-02": 950.50,
 			},
 			Notes: map[string][]string{
 				"2025-01": {"Note B1"},
@@ -177,9 +197,11 @@ func TestCsvFormat(t *testing.T) {
 	header := lines[0]
 	expectedHeaderElements := []string{
 		`"date"`,
-		`"amount (Scenario A)"`,
+		`"liquid (Scenario A)"`,
+		`"total (Scenario A)"`,
 		`"notes (Scenario A)"`,
-		`"amount (Scenario B)"`,
+		`"liquid (Scenario B)"`,
+		`"total (Scenario B)"`,
 		`"notes (Scenario B)"`,
 	}
 
@@ -194,8 +216,12 @@ func TestCsvFormat(t *testing.T) {
 	expectedDataElements := []string{
 		`"2025-01"`,
 		`"2025-02"`,
+		`"700.25"`,
+		`"1200.75"`,
 		`"1000.00"`,
 		`"1500.50"`,
+		`"650.00"`,
+		`"950.50"`,
 		`"900.00"`,
 		`"1200.25"`,
 		`"Note A1"`,
@@ -218,6 +244,10 @@ func TestCsvStringMatchesCsvFormat(t *testing.T) {
 				"2025-01": 1000.00,
 				"2025-02": 1500.50,
 			},
+			Liquid: map[string]float64{
+				"2025-01": 700.25,
+				"2025-02": 1200.75,
+			},
 			Notes: map[string][]string{
 				"2025-01": {"Note A1"},
 				"2025-02": {"Note A2"},
@@ -227,6 +257,9 @@ func TestCsvStringMatchesCsvFormat(t *testing.T) {
 			Name: "Scenario B",
 			Data: map[string]float64{
 				"2025-01": 900.00,
+			},
+			Liquid: map[string]float64{
+				"2025-01": 650.00,
 			},
 			Notes: map[string][]string{
 				"2025-01": {"Note B1"},
@@ -262,6 +295,9 @@ func TestCsvFormatSingleScenario(t *testing.T) {
 			Data: map[string]float64{
 				"2025-01": 1000.00,
 			},
+			Liquid: map[string]float64{
+				"2025-01": 720.00,
+			},
 			Notes: map[string][]string{
 				"2025-01": {"Only note"},
 			},
@@ -293,8 +329,11 @@ func TestCsvFormatSingleScenario(t *testing.T) {
 	if !strings.Contains(lines[0], `"date"`) {
 		t.Errorf("CsvFormat header missing date column")
 	}
-	if !strings.Contains(lines[0], `"amount (Only Scenario)"`) {
-		t.Errorf("CsvFormat header missing amount column")
+	if !strings.Contains(lines[0], `"liquid (Only Scenario)"`) {
+		t.Errorf("CsvFormat header missing liquid column")
+	}
+	if !strings.Contains(lines[0], `"total (Only Scenario)"`) {
+		t.Errorf("CsvFormat header missing total column")
 	}
 	if !strings.Contains(lines[0], `"notes (Only Scenario)"`) {
 		t.Errorf("CsvFormat header missing notes column")
@@ -332,6 +371,11 @@ func TestCsvFormatNotesHandling(t *testing.T) {
 				"2025-01": 1000.00,
 				"2025-02": 2000.00,
 				"2025-03": 3000.00,
+			},
+			Liquid: map[string]float64{
+				"2025-01": 700.00,
+				"2025-02": 1600.00,
+				"2025-03": 2500.00,
 			},
 			Notes: map[string][]string{
 				"2025-01": {"Single note"},

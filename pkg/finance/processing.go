@@ -119,9 +119,10 @@ type LoanWithSchedule interface {
 
 // ForecastEngine coordinates the overall forecasting process
 type ForecastEngine struct {
-	eventProcessor *EventProcessor
-	loanProcessor  *LoanProcessor
-	logger         *zap.Logger
+	eventProcessor      *EventProcessor
+	loanProcessor       *LoanProcessor
+	investmentProcessor *InvestmentProcessor
+	logger              *zap.Logger
 }
 
 // NewForecastEngine creates a new forecast engine
@@ -132,9 +133,10 @@ func NewForecastEngine(logger *zap.Logger) *ForecastEngine {
 	}
 
 	return &ForecastEngine{
-		eventProcessor: NewEventProcessor(logger),
-		loanProcessor:  NewLoanProcessor(logger),
-		logger:         logger,
+		eventProcessor:      NewEventProcessor(logger),
+		loanProcessor:       NewLoanProcessor(logger),
+		investmentProcessor: NewInvestmentProcessor(logger),
+		logger:              logger,
 	}
 }
 
@@ -152,4 +154,12 @@ func (fe *ForecastEngine) ProcessMonthlyChanges(date string, events []EventWithD
 	loanAmount := fe.loanProcessor.ProcessLoansForDate(date, loans)
 
 	return eventAmount + loanAmount, nil
+}
+
+// ProcessInvestments processes investments for a specific date and returns the total change and per-investment details.
+func (fe *ForecastEngine) ProcessInvestments(date string, investments []Investment, layout string, states map[string]*InvestmentState) (float64, []InvestmentChange, error) {
+	if fe.investmentProcessor == nil {
+		return 0, nil, fmt.Errorf("investment processor not initialized")
+	}
+	return fe.investmentProcessor.ProcessInvestmentsForDate(date, investments, layout, states)
 }

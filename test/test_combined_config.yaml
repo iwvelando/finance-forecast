@@ -1,0 +1,98 @@
+---
+# Combined configuration that unions the deterministic component baselines
+# Sum of component start values: 1,000 + 20,000 + 7,000 + 6,000 + 8,000 = 42,000
+# Final projection should equal the linear sum of individual baselines.
+# Expected total ≈ 78,605.48 at 2026-01.
+startDate: 2024-12
+
+common:
+  startingValue: 42000.00
+  deathDate: 2026-01
+  events:
+    - name: Monthly salary
+      amount: 2000.00
+      frequency: 1
+      startDate: 2025-01
+      endDate: 2025-12
+    - name: Rent
+      amount: -800.00
+      frequency: 1
+      startDate: 2025-01
+      endDate: 2025-12
+    - name: Streaming subscription
+      amount: -50.00
+      frequency: 1
+      startDate: 2025-03
+    - name: Quarterly maintenance
+      amount: -300.00
+      frequency: 3
+      startDate: 2025-02
+    - name: Part-time tutoring income
+      amount: 500.00
+      frequency: 1
+      startDate: 2025-07
+
+  loans:
+    - name: Twelve month auto loan
+      principal: 10000.00
+      downPayment: 0.00
+      interestRate: 6.0
+      term: 12
+      startDate: 2025-01
+
+  investments:
+    - name: Traditional 401k
+      startingValue: 10000.00
+      annualReturnRate: 6.0
+      taxRate: 0.0
+      contributionsFromCash: false
+      contributions:
+        - amount: 500.00
+          frequency: 1
+          startDate: 2025-01
+          endDate: 2025-12
+      withdrawals:
+        - amount: 2000.00
+          frequency: 12
+          startDate: 2025-12
+          endDate: 2025-12
+    - name: Roth IRA
+      startingValue: 5000.00
+      annualReturnRate: 5.0
+      taxRate: 0.0
+      contributionsFromCash: true
+      contributions:
+        - amount: 400.00
+          frequency: 1
+          startDate: 2025-01
+          endDate: 2025-12
+      withdrawals:
+        - percentage: 10.0
+          frequency: 12
+          startDate: 2025-12
+          endDate: 2025-12
+    - name: Taxable Brokerage
+      startingValue: 8000.00
+      annualReturnRate: 5.0
+      taxRate: 15.0
+      contributionsFromCash: true
+      contributions:
+        - amount: 300.00
+          frequency: 1
+          startDate: 2025-01
+          endDate: 2025-12
+      withdrawals:
+        - amount: 1500.00
+          frequency: 12
+          startDate: 2025-12
+          endDate: 2025-12
+
+scenarios:
+  - name: deterministic combined baseline
+    active: true
+
+logging:
+  level: error
+
+output:
+  format: pretty

@@ -1,0 +1,48 @@
+---
+# Deterministic cash-flow configuration for integration tests
+# startDate is one month before the first event so January 2025 runs first.
+# Verification reference: cash flow arithmetic.
+# See https://www.investopedia.com/terms/c/cashflow.asp
+# Manual projection: 1,000 + (12 × 2,000) + (7 × 500) − (12 × 800)
+# − (11 × 50) − (4 × 300) = 17,150.
+startDate: 2024-12
+
+common:
+  startingValue: 1000.00
+  deathDate: 2026-01
+  events:
+    - name: Monthly salary
+      amount: 2000.00
+      frequency: 1
+      startDate: 2025-01
+      endDate: 2025-12
+    - name: Rent
+      amount: -800.00
+      frequency: 1
+      startDate: 2025-01
+      endDate: 2025-12
+    - name: Streaming subscription
+      amount: -50.00
+      frequency: 1
+      startDate: 2025-03
+      # Open-ended expense stops at deathDate (2025-12)
+    - name: Quarterly maintenance
+      amount: -300.00
+      frequency: 3
+      startDate: 2025-02
+      # Quarterly expense demonstrates non-monthly frequency
+    - name: Part-time tutoring income
+      amount: 500.00
+      frequency: 1
+      startDate: 2025-07
+      # No endDate to cover open-ended income within horizon
+
+scenarios:
+  - name: deterministic cash flow baseline
+    active: true
+
+logging:
+  level: error
+
+output:
+  format: pretty
