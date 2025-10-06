@@ -205,7 +205,7 @@ func addInvestmentNotes(notes map[string][]string, date, scope string, changes [
 		var parts []string
 		if change.Contribution != 0 {
 			label := "contribution"
-			if change.ContributionReducesIncome {
+			if change.ContributionFromCash {
 				label = "contribution (reduces cash balance)"
 			}
 			parts = append(parts, fmt.Sprintf("%s %+0.2f", label, change.Contribution))
@@ -251,7 +251,7 @@ func addInvestmentNotes(notes map[string][]string, date, scope string, changes [
 func sumIncomeReducingContributions(changes []finance.InvestmentChange) float64 {
 	total := 0.0
 	for _, change := range changes {
-		if change.ContributionReducesIncome {
+		if change.ContributionFromCash {
 			total += change.Contribution
 		}
 	}

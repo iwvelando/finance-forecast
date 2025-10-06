@@ -448,10 +448,10 @@ func TestGetForecastWithInvestmentsContributionReducingIncome(t *testing.T) {
 				Active: true,
 				Investments: []config.Investment{
 					{
-						Name:                      "Traditional 401k",
-						StartingValue:             0,
-						AnnualReturnRate:          0,
-						ContributionsReduceIncome: true,
+						Name:                  "Traditional 401k",
+						StartingValue:         0,
+						AnnualReturnRate:      0,
+						ContributionsFromCash: true,
 						Contributions: []config.Event{
 							{Amount: 100},
 						},

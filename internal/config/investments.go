@@ -7,13 +7,13 @@ import (
 
 // Investment describes an investment account with contributions and withdrawals.
 type Investment struct {
-	Name                      string  `yaml:"name,omitempty"`
-	StartingValue             float64 `yaml:"startingValue,omitempty"`
-	AnnualReturnRate          float64 `yaml:"annualReturnRate,omitempty"`
-	TaxRate                   float64 `yaml:"taxRate,omitempty"`
-	ContributionsReduceIncome bool    `yaml:"contributionsReduceIncome,omitempty"`
-	Contributions             []Event `yaml:"contributions,omitempty"`
-	Withdrawals               []Event `yaml:"withdrawals,omitempty"`
+	Name                  string  `yaml:"name,omitempty"`
+	StartingValue         float64 `yaml:"startingValue,omitempty"`
+	AnnualReturnRate      float64 `yaml:"annualReturnRate,omitempty"`
+	TaxRate               float64 `yaml:"taxRate,omitempty"`
+	ContributionsFromCash bool    `yaml:"contributionsFromCash,omitempty"`
+	Contributions         []Event `yaml:"contributions,omitempty"`
+	Withdrawals           []Event `yaml:"withdrawals,omitempty"`
 }
 
 // FormDateListsWithFixedTime parses contribution and withdrawal date lists using the provided fixed time.

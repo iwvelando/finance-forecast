@@ -16,7 +16,7 @@ type stubInvestment struct {
 	contributions map[string]float64
 	withdrawals   map[string]float64
 	withdrawalPct map[string]float64
-	reduceIncome  bool
+	fromCash      bool
 }
 
 func (s stubInvestment) GetName() string {
@@ -56,8 +56,8 @@ func (s stubInvestment) GetWithdrawalPercentageForDate(date string) float64 {
 	return s.withdrawalPct[date]
 }
 
-func (s stubInvestment) ContributionsReduceIncome() bool {
-	return s.reduceIncome
+func (s stubInvestment) ContributionsFromCash() bool {
+	return s.fromCash
 }
 
 func TestInvestmentProcessorInitializeStates(t *testing.T) {
@@ -133,8 +133,8 @@ func TestInvestmentProcessorProcessInvestmentsForDate_BasicGrowth(t *testing.T) 
 		t.Errorf("updated state = %.2f, want 1111", states["Core Fund"].CurrentValue)
 	}
 
-	if change.ContributionReducesIncome {
-		t.Errorf("ContributionReducesIncome expected false by default")
+	if change.ContributionFromCash {
+		t.Errorf("ContributionFromCash expected false by default")
 	}
 }
 
@@ -244,7 +244,7 @@ func TestInvestmentProcessorProcessInvestmentsForDate_PercentageWithdrawal(t *te
 	}
 }
 
-func TestInvestmentProcessorProcessInvestmentsForDate_ReduceIncomeFlag(t *testing.T) {
+func TestInvestmentProcessorProcessInvestmentsForDate_FromCashFlag(t *testing.T) {
 	logger := zap.NewNop()
 	processor := NewInvestmentProcessor(logger)
 
@@ -253,7 +253,7 @@ func TestInvestmentProcessorProcessInvestmentsForDate_ReduceIncomeFlag(t *testin
 		startingValue: 1000,
 		annualRate:    6,
 		contributions: map[string]float64{"2025-07": 200},
-		reduceIncome:  true,
+		fromCash:      true,
 	}
 
 	investments := []Investment{inv}
@@ -268,8 +268,8 @@ func TestInvestmentProcessorProcessInvestmentsForDate_ReduceIncomeFlag(t *testin
 		t.Fatalf("expected 1 investment change entry, got %d", len(changes))
 	}
 
-	if !changes[0].ContributionReducesIncome {
-		t.Fatalf("expected ContributionReducesIncome to be true")
+	if !changes[0].ContributionFromCash {
+		t.Fatalf("expected ContributionFromCash to be true")
 	}
 }
 

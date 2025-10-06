@@ -76,7 +76,7 @@ type ConfigInvestmentAdapter struct {
 	contributionSchedule  map[string]float64
 	withdrawalSchedule    map[string]float64
 	withdrawalPercentages map[string]float64
-	reduceIncome          bool
+	fromCash              bool
 }
 
 // newConfigInvestmentAdapter constructs an adapter for the provided investment
@@ -86,7 +86,7 @@ func newConfigInvestmentAdapter(investment config.Investment) ConfigInvestmentAd
 		contributionSchedule:  make(map[string]float64),
 		withdrawalSchedule:    make(map[string]float64),
 		withdrawalPercentages: make(map[string]float64),
-		reduceIncome:          investment.ContributionsReduceIncome,
+		fromCash:              investment.ContributionsFromCash,
 	}
 
 	for _, contribution := range investment.Contributions {
@@ -145,9 +145,9 @@ func (a ConfigInvestmentAdapter) GetWithdrawalPercentageForDate(date string) flo
 	return a.withdrawalPercentages[date]
 }
 
-// ContributionsReduceIncome indicates whether contributions reduce monthly income
-func (a ConfigInvestmentAdapter) ContributionsReduceIncome() bool {
-	return a.reduceIncome
+// ContributionsFromCash indicates whether contributions reduce monthly income
+func (a ConfigInvestmentAdapter) ContributionsFromCash() bool {
+	return a.fromCash
 }
 
 // InvestmentsToFinanceInvestments converts config.Investment slices to finance.Investment slices

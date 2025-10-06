@@ -130,7 +130,7 @@ scenarios:
       - name: Retirement savings
         startingValue: 15000.00
         annualReturnRate: 7.0
-        contributionsReduceIncome: true
+        contributionsFromCash: true
         contributions:
           - amount: 750.00
             frequency: 1
@@ -184,7 +184,7 @@ scenarios:
       - name: Retirement savings
         startingValue: 15000.00
         annualReturnRate: 7.0
-        contributionsReduceIncome: true
+        contributionsFromCash: true
         contributions:
           - amount: 750.00
             frequency: 1

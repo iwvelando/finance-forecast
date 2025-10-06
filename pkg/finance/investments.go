@@ -17,7 +17,7 @@ type Investment interface {
 	GetContributionForDate(date string) float64
 	GetWithdrawalForDate(date string) float64
 	GetWithdrawalPercentageForDate(date string) float64
-	ContributionsReduceIncome() bool
+	ContributionsFromCash() bool
 }
 
 // InvestmentState tracks the running value of an investment across simulation months.
@@ -27,15 +27,15 @@ type InvestmentState struct {
 
 // InvestmentChange captures the computed deltas for a single investment in a given month.
 type InvestmentChange struct {
-	Name                      string
-	Contribution              float64
-	Withdrawal                float64
-	WithdrawalPercentage      float64
-	Growth                    float64
-	GrowthBeforeTax           float64
-	Tax                       float64
-	NetChange                 float64
-	ContributionReducesIncome bool
+	Name                 string
+	Contribution         float64
+	Withdrawal           float64
+	WithdrawalPercentage float64
+	Growth               float64
+	GrowthBeforeTax      float64
+	Tax                  float64
+	NetChange            float64
+	ContributionFromCash bool
 }
 
 // InvestmentProcessor handles monthly investment computations.
@@ -136,15 +136,15 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 		totalChange += netChange
 
 		changes = append(changes, InvestmentChange{
-			Name:                      inv.GetName(),
-			Contribution:              contribution,
-			Withdrawal:                withdrawal,
-			WithdrawalPercentage:      withdrawalPercent,
-			Growth:                    afterTaxGrowth,
-			GrowthBeforeTax:           growthBeforeTax,
-			Tax:                       tax,
-			NetChange:                 netChange,
-			ContributionReducesIncome: inv.ContributionsReduceIncome(),
+			Name:                 inv.GetName(),
+			Contribution:         contribution,
+			Withdrawal:           withdrawal,
+			WithdrawalPercentage: withdrawalPercent,
+			Growth:               afterTaxGrowth,
+			GrowthBeforeTax:      growthBeforeTax,
+			Tax:                  tax,
+			NetChange:            netChange,
+			ContributionFromCash: inv.ContributionsFromCash(),
 		})
 	}
 

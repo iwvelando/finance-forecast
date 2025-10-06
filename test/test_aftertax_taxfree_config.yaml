@@ -10,7 +10,7 @@ common:
       startingValue: 5000.00
       annualReturnRate: 5.0
       taxRate: 0.0
-      contributionsReduceIncome: true
+      contributionsFromCash: true
       contributions:
         - amount: 400.00
           frequency: 1

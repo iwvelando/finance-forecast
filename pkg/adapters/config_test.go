@@ -287,11 +287,11 @@ func TestInvestmentsToFinanceInvestments(t *testing.T) {
 	withdrawalDate := datetime.MustParseTime(datetime.DateTimeLayout, "2025-12")
 
 	investment := config.Investment{
-		Name:                      "Retirement",
-		StartingValue:             5000,
-		AnnualReturnRate:          6.0,
-		TaxRate:                   24.0,
-		ContributionsReduceIncome: true,
+		Name:                  "Retirement",
+		StartingValue:         5000.0,
+		AnnualReturnRate:      6.0,
+		TaxRate:               24.0,
+		ContributionsFromCash: true,
 		Contributions: []config.Event{
 			{
 				Name:     "Monthly Contribution",
@@ -350,8 +350,8 @@ func TestInvestmentsToFinanceInvestments(t *testing.T) {
 		t.Errorf("GetWithdrawalPercentageForDate(2025-12) = %.2f, want 0", fi.GetWithdrawalPercentageForDate("2025-12"))
 	}
 
-	if !fi.ContributionsReduceIncome() {
-		t.Errorf("ContributionsReduceIncome() = false, want true")
+	if !fi.ContributionsFromCash() {
+		t.Errorf("ContributionsFromCash() = false, want true")
 	}
 }
 

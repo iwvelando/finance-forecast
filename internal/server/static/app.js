@@ -489,8 +489,8 @@ function normalizeInvestment(investment) {
 	normalized.withdrawals = Array.isArray(normalized.withdrawals)
 		? normalized.withdrawals.map(normalizeEvent)
 		: [];
-	if (typeof normalized.contributionsReduceIncome !== "boolean") {
-		normalized.contributionsReduceIncome = Boolean(normalized.contributionsReduceIncome);
+	if (typeof normalized.contributionsFromCash !== "boolean") {
+		normalized.contributionsFromCash = Boolean(normalized.contributionsFromCash);
 	}
 	return normalized;
 }
@@ -1067,8 +1067,8 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 	}));
 	grid.appendChild(createCheckboxField({
 		label: "Contributions reduce cash balance",
-		path: `${basePath}.contributionsReduceIncome`,
-		value: investment.contributionsReduceIncome,
+		path: `${basePath}.contributionsFromCash`,
+		value: investment.contributionsFromCash,
 		tooltip: "Enable when contribution amounts should be deducted from your simulated cash balance (e.g. Roth IRA or taxable brokerage). Disable for pre-tax payroll deductions such as traditional 401(k).",
 	}));
 	card.appendChild(grid);
@@ -1853,7 +1853,7 @@ function createEmptyInvestment() {
 		taxRate: 0,
 		contributions: [],
 		withdrawals: [],
-		contributionsReduceIncome: false,
+		contributionsFromCash: false,
 	};
 }
 

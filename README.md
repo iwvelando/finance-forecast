@@ -55,7 +55,7 @@ When running in server mode:
   - `startingValue`: balance at the beginning of the simulation
   - `annualReturnRate`: expected average annual growth (percentage)
   - `taxRate`: optional tax rate applied to positive monthly gains
-  - `contributionsReduceIncome`: optional toggle (default `false`) that, when enabled, deducts contribution amounts from the simulated cash balance (useful for Roth IRA or brokerage contributions). Leave disabled for pre-tax payroll deductions such as traditional 401(k).
+  - `contributionsFromCash`: optional toggle (default `false`) that, when enabled, deducts contribution amounts from the simulated cash balance (useful for Roth IRA or brokerage contributions). Leave disabled for pre-tax payroll deductions such as traditional 401(k).
   - `contributions` / `withdrawals`: arrays of event-style schedules (amount, frequency, start/end dates). Withdrawal events may specify a fixed `amount` or a `percentage` of the current balance; each investment must choose one style for all of its withdrawals.
 - Investment balances compound monthly; contributions and withdrawals update the account before growth is calculated.
 
