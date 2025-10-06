@@ -281,3 +281,118 @@ func TestLoansToFinanceLoansEmpty(t *testing.T) {
 		t.Errorf("LoansToFinanceLoans() with nil input length = %d, expected 0", len(financeLoans))
 	}
 }
+
+func TestInvestmentsToFinanceInvestments(t *testing.T) {
+	contributionDate := datetime.MustParseTime(datetime.DateTimeLayout, "2025-07")
+	withdrawalDate := datetime.MustParseTime(datetime.DateTimeLayout, "2025-12")
+
+	investment := config.Investment{
+		Name:                      "Retirement",
+		StartingValue:             5000,
+		AnnualReturnRate:          6.0,
+		TaxRate:                   24.0,
+		ContributionsReduceIncome: true,
+		Contributions: []config.Event{
+			{
+				Name:     "Monthly Contribution",
+				Amount:   500,
+				DateList: []time.Time{contributionDate},
+			},
+		},
+		Withdrawals: []config.Event{
+			{
+				Name:     "Year-end Withdrawal",
+				Amount:   2000,
+				DateList: []time.Time{withdrawalDate},
+			},
+		},
+	}
+
+	financeInvestments := InvestmentsToFinanceInvestments([]config.Investment{investment})
+	if len(financeInvestments) != 1 {
+		t.Fatalf("expected 1 finance investment, got %d", len(financeInvestments))
+	}
+
+	fi := financeInvestments[0]
+	if fi.GetName() != "Retirement" {
+		t.Errorf("GetName() = %s, want 'Retirement'", fi.GetName())
+	}
+
+	if fi.GetStartingValue() != 5000 {
+		t.Errorf("GetStartingValue() = %.2f, want 5000", fi.GetStartingValue())
+	}
+
+	if fi.GetAnnualReturnRate() != 6.0 {
+		t.Errorf("GetAnnualReturnRate() = %.2f, want 6.0", fi.GetAnnualReturnRate())
+	}
+
+	if fi.GetTaxRate() != 24.0 {
+		t.Errorf("GetTaxRate() = %.2f, want 24.0", fi.GetTaxRate())
+	}
+
+	if fi.GetContributionForDate("2025-07") != 500 {
+		t.Errorf("GetContributionForDate(2025-07) = %.2f, want 500", fi.GetContributionForDate("2025-07"))
+	}
+
+	if fi.GetContributionForDate("2025-08") != 0 {
+		t.Errorf("GetContributionForDate(2025-08) should be 0")
+	}
+
+	if fi.GetWithdrawalForDate("2025-12") != 2000 {
+		t.Errorf("GetWithdrawalForDate(2025-12) = %.2f, want 2000", fi.GetWithdrawalForDate("2025-12"))
+	}
+
+	if fi.GetWithdrawalForDate("2025-11") != 0 {
+		t.Errorf("GetWithdrawalForDate(2025-11) should be 0")
+	}
+
+	if fi.GetWithdrawalPercentageForDate("2025-12") != 0 {
+		t.Errorf("GetWithdrawalPercentageForDate(2025-12) = %.2f, want 0", fi.GetWithdrawalPercentageForDate("2025-12"))
+	}
+
+	if !fi.ContributionsReduceIncome() {
+		t.Errorf("ContributionsReduceIncome() = false, want true")
+	}
+}
+
+func TestInvestmentsToFinanceInvestments_PercentageWithdrawals(t *testing.T) {
+	withdrawalDate, _ := time.Parse(time.RFC3339, "2025-06-01T00:00:00Z")
+
+	investment := config.Investment{
+		Name:             "Growth Fund",
+		StartingValue:    10000,
+		AnnualReturnRate: 7.5,
+		Withdrawals: []config.Event{
+			{
+				Name:       "Annual Withdrawal",
+				Percentage: 4.0,
+				DateList:   []time.Time{withdrawalDate},
+			},
+		},
+	}
+
+	financeInvestments := InvestmentsToFinanceInvestments([]config.Investment{investment})
+	if len(financeInvestments) != 1 {
+		t.Fatalf("expected 1 finance investment, got %d", len(financeInvestments))
+	}
+
+	fi := financeInvestments[0]
+
+	if fi.GetWithdrawalForDate("2025-06") != 0 {
+		t.Fatalf("expected amount withdrawal to be 0 when using percentage")
+	}
+
+	if fi.GetWithdrawalPercentageForDate("2025-06") != 4.0 {
+		t.Fatalf("expected withdrawal percentage to be 4.0, got %.2f", fi.GetWithdrawalPercentageForDate("2025-06"))
+	}
+}
+
+func TestInvestmentsToFinanceInvestmentsNil(t *testing.T) {
+	if len(InvestmentsToFinanceInvestments(nil)) != 0 {
+		t.Fatalf("expected nil investments to return empty slice")
+	}
+
+	if len(InvestmentsToFinanceInvestments([]config.Investment{})) != 0 {
+		t.Fatalf("expected empty investments slice to return empty result")
+	}
+}

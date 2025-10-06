@@ -1,0 +1,33 @@
+# After-tax, tax-free growth account (Roth IRA style) with percentage-based withdrawal
+# Expected 2026-01 balances: cash ≈ 2,218.78, account ≈ 9,207.24, total ≈ 11,426.02.
+startDate: 2024-12
+
+common:
+  startingValue: 6000.00
+  deathDate: 2026-01
+  investments:
+    - name: Roth IRA
+      startingValue: 5000.00
+      annualReturnRate: 5.0
+      taxRate: 0.0
+      contributionsReduceIncome: true
+      contributions:
+        - amount: 400.00
+          frequency: 1
+          startDate: 2025-01
+          endDate: 2025-12
+      withdrawals:
+        - percentage: 10.0
+          frequency: 12
+          startDate: 2025-12
+          endDate: 2025-12
+
+scenarios:
+  - name: deterministic tax-free investment baseline
+    active: true
+
+logging:
+  level: error
+
+output:
+  format: pretty

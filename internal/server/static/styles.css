@@ -63,6 +63,17 @@ input[type="file"] {
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
 input[type="file"]:focus {
     outline: none;
     border-color: rgba(52, 120, 246, 0.8);
@@ -194,6 +205,40 @@ button:disabled {
     color: rgba(27, 31, 59, 0.6);
 }
 
+.scenario-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.scenario-tab {
+    border: 1px solid rgba(27, 31, 59, 0.18);
+    background: rgba(255, 255, 255, 0.85);
+    color: #1b1f3b;
+    border-radius: 999px;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.scenario-tab:hover {
+    background: rgba(58, 123, 213, 0.12);
+    color: #163d74;
+}
+
+.scenario-tab:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(58, 123, 213, 0.3);
+}
+
+.scenario-tab.active {
+    background: rgba(58, 123, 213, 0.18);
+    color: #163d74;
+    box-shadow: 0 0 0 1px rgba(58, 123, 213, 0.2);
+}
+
 .table-container {
     overflow-x: auto;
     border-radius: 12px;
@@ -216,6 +261,12 @@ button:disabled {
     border-bottom: 1px solid rgba(27, 31, 59, 0.08);
     text-align: left;
     vertical-align: top;
+}
+
+.scenario-heading {
+    text-align: center;
+    font-weight: 600;
+    color: #163d74;
 }
 
 .subhead {
@@ -408,6 +459,16 @@ button:disabled {
     color: #1b1f3b;
     font-size: 0.95rem;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editor-field.is-disabled {
+    opacity: 0.6;
+}
+
+.editor-field.is-disabled input,
+.editor-field.is-disabled select {
+    background: rgba(245, 245, 245, 0.9);
+    cursor: not-allowed;
 }
 
 .editor-field input.invalid,

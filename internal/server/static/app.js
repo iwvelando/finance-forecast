@@ -6,6 +6,7 @@ const tableHead = document.querySelector("#results-table thead");
 const tableBody = document.querySelector("#results-table tbody");
 const downloadLink = document.getElementById("download-link");
 const durationEl = document.getElementById("duration");
+const scenarioTabsEl = document.getElementById("scenario-tabs");
 const configEditorRoot = document.getElementById("config-editor");
 const uploadConfigInput = document.getElementById("upload-config-input");
 const uploadConfigButton = document.getElementById("upload-config-button");
@@ -40,6 +41,9 @@ let registeredInputs = [];
 let tooltipCounter = 0;
 let activeHelpTooltip = null;
 let helpTooltipInitialized = false;
+let forecastDataset = null;
+let activeScenarioIndex = 0;
+let latestForecastResponse = null;
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -145,7 +149,16 @@ async function runForecastFromFile(file) {
 
 function processForecastResponse(data, successMessage, options = {}) {
 	const { switchToResults = true } = options;
-	renderResults(data);
+	const scenarios = Array.isArray(data?.scenarios) ? [...data.scenarios] : [];
+	const rows = Array.isArray(data?.rows) ? data.rows : [];
+	forecastDataset = { scenarios, rows };
+	if (scenarios.length === 0) {
+		activeScenarioIndex = 0;
+	} else if (activeScenarioIndex >= scenarios.length) {
+		activeScenarioIndex = scenarios.length - 1;
+	}
+	latestForecastResponse = data;
+	renderResults();
 	updateConfigState(data);
 	setDataAvailability(true);
 	if (switchToResults) {
@@ -172,6 +185,13 @@ function clearResultsView() {
 	tableBody.innerHTML = "";
 	downloadLink.classList.add("hidden");
 	durationEl.textContent = "";
+	if (scenarioTabsEl) {
+		scenarioTabsEl.innerHTML = "";
+		scenarioTabsEl.classList.add("hidden");
+	}
+	forecastDataset = null;
+	latestForecastResponse = null;
+	activeScenarioIndex = 0;
 
 	if (currentObjectUrl) {
 		URL.revokeObjectURL(currentObjectUrl);
@@ -179,21 +199,19 @@ function clearResultsView() {
 	}
 }
 
-function renderResults(data) {
-	if (!data || !Array.isArray(data.scenarios) || !Array.isArray(data.rows)) {
-		throw new Error("Malformed response received from server");
+function renderResults() {
+	if (!latestForecastResponse || !forecastDataset) {
+		throw new Error("No forecast data available to render");
 	}
 
-	clearResultsView();
-	tableHead.innerHTML = "";
-	tableBody.innerHTML = "";
+	renderWarnings(latestForecastResponse.warnings);
+	renderActiveScenario();
+	prepareDownload(latestForecastResponse.csv);
 
-	renderWarnings(data.warnings);
-	renderTable(data.scenarios, data.rows);
-	prepareDownload(data.csv);
-
-	if (data.duration) {
-		durationEl.textContent = `Computed in ${data.duration}`;
+	if (latestForecastResponse.duration) {
+		durationEl.textContent = `Computed in ${latestForecastResponse.duration}`;
+	} else {
+		durationEl.textContent = "";
 	}
 
 	updateStickyMetrics();
@@ -211,24 +229,93 @@ function renderWarnings(warnings) {
 	warningsEl.classList.remove("hidden");
 }
 
-function renderTable(scenarios, rows) {
+function renderActiveScenario() {
+	renderScenarioTabs();
+	renderScenarioTable();
+}
+
+function clampActiveScenarioIndex() {
+	if (!forecastDataset || !Array.isArray(forecastDataset.scenarios) || forecastDataset.scenarios.length === 0) {
+		activeScenarioIndex = 0;
+		return activeScenarioIndex;
+	}
+
+	if (activeScenarioIndex < 0) {
+		activeScenarioIndex = 0;
+	} else if (activeScenarioIndex >= forecastDataset.scenarios.length) {
+		activeScenarioIndex = forecastDataset.scenarios.length - 1;
+	}
+
+	return activeScenarioIndex;
+}
+
+function renderScenarioTabs() {
+	if (!scenarioTabsEl) {
+		return;
+	}
+
+	scenarioTabsEl.innerHTML = "";
+
+	if (!forecastDataset || !Array.isArray(forecastDataset.scenarios) || forecastDataset.scenarios.length <= 1) {
+		scenarioTabsEl.classList.add("hidden");
+		return;
+	}
+
+	const currentIndex = clampActiveScenarioIndex();
+
+	forecastDataset.scenarios.forEach((rawName, index) => {
+		const name = rawName || `Scenario ${index + 1}`;
+		const button = document.createElement("button");
+		button.type = "button";
+		button.className = "scenario-tab";
+		if (index === currentIndex) {
+			button.classList.add("active");
+		}
+		button.setAttribute("role", "tab");
+		button.setAttribute("aria-selected", index === currentIndex ? "true" : "false");
+		button.setAttribute("aria-controls", "results-table");
+		button.setAttribute("tabindex", index === currentIndex ? "0" : "-1");
+		button.textContent = name;
+		button.addEventListener("click", () => {
+			if (activeScenarioIndex !== index) {
+				activeScenarioIndex = index;
+				renderActiveScenario();
+				updateStickyMetrics();
+			}
+		});
+		scenarioTabsEl.appendChild(button);
+	});
+
+	scenarioTabsEl.classList.remove("hidden");
+}
+
+function renderScenarioTable() {
+	tableHead.innerHTML = "";
+	tableBody.innerHTML = "";
+
+	if (!forecastDataset || !Array.isArray(forecastDataset.scenarios) || forecastDataset.scenarios.length === 0) {
+		return;
+	}
+
+	const scenarioIndex = clampActiveScenarioIndex();
+	const scenarioName = forecastDataset.scenarios[scenarioIndex] || `Scenario ${scenarioIndex + 1}`;
+
 	const headRow = document.createElement("tr");
 	headRow.classList.add("primary-header-row");
 	headRow.appendChild(createHeaderCell("Date"));
-	scenarios.forEach((scenario) => {
-		const th = createHeaderCell(scenario);
-		th.colSpan = 2;
-		headRow.appendChild(th);
-	});
+
+	const scenarioHeader = createHeaderCell(scenarioName);
+	scenarioHeader.colSpan = 3;
+	scenarioHeader.classList.add("scenario-heading");
+	headRow.appendChild(scenarioHeader);
 	tableHead.appendChild(headRow);
 
 	const subHeadRow = document.createElement("tr");
 	subHeadRow.classList.add("secondary-header-row");
 	subHeadRow.appendChild(createHeaderCell("", "subhead"));
-	scenarios.forEach(() => {
-		subHeadRow.appendChild(createHeaderCell("Amount", "subhead"));
-		subHeadRow.appendChild(createHeaderCell("Notes", "subhead"));
-	});
+	subHeadRow.appendChild(createHeaderCell("Liquid Net Worth", "subhead"));
+	subHeadRow.appendChild(createHeaderCell("Total Net Worth", "subhead"));
+	subHeadRow.appendChild(createHeaderCell("Notes", "subhead"));
 	tableHead.appendChild(subHeadRow);
 
 	const currencyFormatter = new Intl.NumberFormat(undefined, {
@@ -237,20 +324,29 @@ function renderTable(scenarios, rows) {
 		minimumFractionDigits: 2,
 	});
 
+	const noValueMarkup = '<span class="muted-text">—</span>';
+	const rows = Array.isArray(forecastDataset.rows) ? forecastDataset.rows : [];
 	rows.forEach((row) => {
 		const tr = document.createElement("tr");
 		tr.appendChild(createCell(row.date));
 
-		row.values.forEach((value) => {
-			const amountText = typeof value.amount === "number"
-				? currencyFormatter.format(value.amount)
-				: "—";
-			const amountCell = createCell(amountText, "amount-cell");
-			tr.appendChild(amountCell);
+		const value = Array.isArray(row.values) ? row.values[scenarioIndex] || {} : {};
+		const liquidAmount = typeof value.liquid === "number"
+			? value.liquid
+			: typeof value.amount === "number"
+				? value.amount
+				: null;
+		const totalAmount = typeof value.total === "number"
+			? value.total
+			: typeof value.amount === "number"
+				? value.amount
+				: null;
+		const liquidValue = liquidAmount !== null ? currencyFormatter.format(liquidAmount) : noValueMarkup;
+		const totalValue = totalAmount !== null ? currencyFormatter.format(totalAmount) : noValueMarkup;
 
-			const notesCell = createCell(formatNotes(value.notes));
-			tr.appendChild(notesCell);
-		});
+		tr.appendChild(createCell(liquidValue, "amount-cell"));
+		tr.appendChild(createCell(totalValue, "amount-cell"));
+		tr.appendChild(createCell(formatNotes(value.notes)));
 
 		tableBody.appendChild(tr);
 	});
@@ -346,6 +442,9 @@ function prepareConfigForEditing(rawConfig) {
 	const common = cloned.common;
 	common.events = Array.isArray(common.events) ? common.events.map(normalizeEvent) : [];
 	common.loans = Array.isArray(common.loans) ? common.loans.map(normalizeLoan) : [];
+	common.investments = Array.isArray(common.investments)
+		? common.investments.map(normalizeInvestment)
+		: [];
 
 	cloned.scenarios = Array.isArray(cloned.scenarios)
 		? cloned.scenarios.map(normalizeScenario)
@@ -380,6 +479,22 @@ function normalizeLoan(loan) {
 	return normalized;
 }
 
+function normalizeInvestment(investment) {
+	const normalized = cloneDeep(investment) || {};
+	delete normalized.dateList;
+	delete normalized.DateList;
+	normalized.contributions = Array.isArray(normalized.contributions)
+		? normalized.contributions.map(normalizeEvent)
+		: [];
+	normalized.withdrawals = Array.isArray(normalized.withdrawals)
+		? normalized.withdrawals.map(normalizeEvent)
+		: [];
+	if (typeof normalized.contributionsReduceIncome !== "boolean") {
+		normalized.contributionsReduceIncome = Boolean(normalized.contributionsReduceIncome);
+	}
+	return normalized;
+}
+
 function normalizeScenario(scenario) {
 	const normalized = cloneDeep(scenario) || {};
 	normalized.events = Array.isArray(normalized.events)
@@ -387,6 +502,9 @@ function normalizeScenario(scenario) {
 		: [];
 	normalized.loans = Array.isArray(normalized.loans)
 		? normalized.loans.map(normalizeLoan)
+		: [];
+	normalized.investments = Array.isArray(normalized.investments)
+		? normalized.investments.map(normalizeInvestment)
 		: [];
 	if (typeof normalized.active !== "boolean") {
 		normalized.active = Boolean(normalized.active);
@@ -427,6 +545,7 @@ function renderConfigEditor() {
 		value: currentConfig.common.startingValue ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 100,
 		tooltip: "Balance at the end of the start month. Calculate this as your liquid net worth: cash and cash-equivalents minus short-term debts (e.g., credit card balances).",
 		validation: { type: "number" },
 	}));
@@ -449,6 +568,10 @@ function renderConfigEditor() {
 	commonSection.body.appendChild(createLoanCollection(currentConfig.common.loans, "common.loans", {
 		heading: "Common loans",
 		addLabel: "Add common loan",
+	}));
+	commonSection.body.appendChild(createInvestmentCollection(currentConfig.common.investments, "common.investments", {
+		heading: "Common investments",
+		addLabel: "Add common investment",
 	}));
 	configEditorRoot.appendChild(commonSection.section);
 
@@ -557,6 +680,11 @@ function createScenarioCard(scenario, index) {
 		addLabel: "Add loan",
 	}));
 
+	card.appendChild(createInvestmentCollection(scenario.investments || [], `scenarios[${index}].investments`, {
+		heading: "Scenario investments",
+		addLabel: "Add investment",
+	}));
+
 	return card;
 }
 
@@ -583,7 +711,7 @@ function createEventCollection(events, basePath, options = {}) {
 		collection.appendChild(emptyState);
 	} else {
 		events.forEach((event, index) => {
-			const card = createEventCard(event, `${basePath}[${index}]`, index, options.titlePrefix || "Event", () => {
+			const card = createEventCard(event, `${basePath}[${index}]`, index, options, () => {
 				events.splice(index, 1);
 				renderConfigEditor();
 			});
@@ -599,7 +727,8 @@ function createEventCollection(events, basePath, options = {}) {
 	addButton.type = "button";
 	addButton.textContent = options.addLabel || "Add event";
 	addButton.addEventListener("click", () => {
-		events.push(createEmptyEvent());
+		const factory = typeof options.createEmptyEvent === "function" ? options.createEmptyEvent : createEmptyEvent;
+		events.push(factory());
 		renderConfigEditor();
 		switchTab("config");
 	});
@@ -609,19 +738,27 @@ function createEventCollection(events, basePath, options = {}) {
 	return container;
 }
 
-function createEventCard(event, basePath, index, titlePrefix, onRemove) {
+function createEventCard(event, basePath, index, options = {}, onRemove) {
+	const { titlePrefix = "Event", enableWithdrawalPercentage = false } = options || {};
+
 	const card = document.createElement("div");
 	card.className = "editor-card";
 
 	const { header, title } = createCardHeader(
 		event.name || `${titlePrefix} ${index + 1}`,
 		onRemove,
-		"Remove event",
+		options.removeLabel || "Remove event",
 	);
 	card.appendChild(header);
 
 	const grid = document.createElement("div");
 	grid.className = "editor-grid";
+
+	const amountPath = `${basePath}.amount`;
+	const percentagePath = `${basePath}.percentage`;
+	let modeSelect;
+	let applyMode = () => {};
+
 	grid.appendChild(createInputField({
 		label: "Name",
 		path: `${basePath}.name`,
@@ -634,15 +771,66 @@ function createEventCard(event, basePath, index, titlePrefix, onRemove) {
 			title.textContent = value || `${titlePrefix} ${index + 1}`;
 		},
 	}));
-	grid.appendChild(createInputField({
-		label: "Amount",
-		path: `${basePath}.amount`,
+
+	if (enableWithdrawalPercentage) {
+		const modeField = document.createElement("label");
+		modeField.className = "editor-field select-field";
+		const modeLabel = document.createElement("span");
+		modeLabel.className = "editor-label";
+		modeLabel.textContent = "Withdrawal type";
+		modeField.appendChild(modeLabel);
+		attachFieldHelp({
+			wrapper: modeField,
+			labelEl: modeLabel,
+			tooltipText: "Choose whether this withdrawal uses a fixed dollar amount or a percentage of the current investment balance.",
+			label: "Withdrawal type",
+		});
+
+		modeSelect = document.createElement("select");
+		modeSelect.innerHTML = `
+			<option value="amount">Fixed amount</option>
+			<option value="percentage">Percentage of balance</option>
+		`;
+		modeSelect.addEventListener("change", () => {
+			if (modeSelect && typeof modeSelect.value === "string") {
+				applyMode(modeSelect.value);
+			}
+		});
+		modeField.appendChild(modeSelect);
+		grid.appendChild(modeField);
+	}
+
+	const amountTooltip = enableWithdrawalPercentage
+		? "Fixed dollar amount withdrawn when this event occurs."
+		: "Positive amounts represent income; negative amounts represent expenses.";
+
+	const amountField = createInputField({
+		label: enableWithdrawalPercentage ? "Amount (USD)" : "Amount",
+		path: amountPath,
 		value: event.amount ?? "",
 		inputType: "number",
 		step: "0.01",
-		tooltip: "Positive amounts represent income; negative amounts represent expenses.",
+		arrowStep: 100,
+		tooltip: amountTooltip,
 		validation: { type: "number" },
-	}));
+	});
+	grid.appendChild(amountField);
+
+	let percentageField = null;
+	if (enableWithdrawalPercentage) {
+		percentageField = createInputField({
+			label: "Percentage (%)",
+			path: percentagePath,
+			value: event.percentage ?? "",
+			inputType: "number",
+			step: "0.01",
+			arrowStep: 1,
+			min: 0,
+			tooltip: "Percentage of the investment balance withdrawn when this event occurs.",
+			validation: { type: "number" },
+		});
+		grid.appendChild(percentageField);
+	}
 	grid.appendChild(createInputField({
 		label: "Frequency (months)",
 		path: `${basePath}.frequency`,
@@ -671,6 +859,49 @@ function createEventCard(event, basePath, index, titlePrefix, onRemove) {
 		validation: { type: "month" },
 		maxLength: 7,
 	}));
+
+	if (enableWithdrawalPercentage) {
+		const hasPercentage = Object.prototype.hasOwnProperty.call(event, "percentage") && event.percentage !== undefined;
+		const hasAmount = Object.prototype.hasOwnProperty.call(event, "amount") && event.amount !== undefined;
+		let currentMode = hasPercentage && !hasAmount ? "percentage" : "amount";
+		if (hasPercentage && event.percentage !== 0) {
+			currentMode = "percentage";
+		}
+
+		applyMode = (mode) => {
+			const normalizedMode = mode === "percentage" ? "percentage" : "amount";
+			if (modeSelect) {
+				modeSelect.value = normalizedMode;
+			}
+
+			setFieldDisabled(amountPath, normalizedMode !== "amount");
+			setFieldDisabled(percentagePath, normalizedMode !== "percentage");
+
+			if (normalizedMode === "amount") {
+				updateConfigAtPath(percentagePath, null, "number");
+				setFieldValue(percentagePath, "");
+				delete event.percentage;
+				if (!Object.prototype.hasOwnProperty.call(event, "amount")) {
+					updateConfigAtPath(amountPath, 0, "number");
+					setFieldValue(amountPath, "0");
+					event.amount = 0;
+				}
+			} else {
+				updateConfigAtPath(amountPath, null, "number");
+				setFieldValue(amountPath, "");
+				delete event.amount;
+				if (!Object.prototype.hasOwnProperty.call(event, "percentage")) {
+					updateConfigAtPath(percentagePath, 0, "number");
+					setFieldValue(percentagePath, "0");
+					event.percentage = 0;
+				}
+			}
+
+			updateEditorActionsState();
+		};
+
+		applyMode(currentMode);
+	}
 	card.appendChild(grid);
 
 	return card;
@@ -722,6 +953,145 @@ function createLoanCollection(loans, basePath, options = {}) {
 	return container;
 }
 
+function createInvestmentCollection(investments, basePath, options = {}) {
+	const container = document.createElement("div");
+	container.className = "editor-subsection";
+
+	if (options.heading) {
+		const heading = document.createElement("h4");
+		heading.textContent = options.heading;
+		container.appendChild(heading);
+	}
+
+	const collection = document.createElement("div");
+	collection.className = "editor-collection";
+
+	if (!Array.isArray(investments)) {
+		investments = [];
+	}
+
+	if (investments.length === 0) {
+		const emptyState = document.createElement("p");
+		emptyState.className = "muted-text";
+		emptyState.textContent = options.emptyMessage || "No investments configured.";
+		collection.appendChild(emptyState);
+	} else {
+		investments.forEach((investment, index) => {
+			const card = createInvestmentCard(investment, `${basePath}[${index}]`, index, options.titlePrefix || "Investment", () => {
+				investments.splice(index, 1);
+				renderConfigEditor();
+			});
+			collection.appendChild(card);
+		});
+	}
+
+	container.appendChild(collection);
+
+	const actions = document.createElement("div");
+	actions.className = "collection-actions";
+	const addButton = document.createElement("button");
+	addButton.type = "button";
+	addButton.textContent = options.addLabel || "Add investment";
+	addButton.addEventListener("click", () => {
+		investments.push(createEmptyInvestment());
+		renderConfigEditor();
+		switchTab("config");
+	});
+	actions.appendChild(addButton);
+	container.appendChild(actions);
+
+	return container;
+}
+
+function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove) {
+	const card = document.createElement("div");
+	card.className = "editor-card";
+
+	if (!Array.isArray(investment.contributions)) {
+		investment.contributions = [];
+	}
+	if (!Array.isArray(investment.withdrawals)) {
+		investment.withdrawals = [];
+	}
+
+	const { header, title } = createCardHeader(
+		investment.name || `${titlePrefix} ${index + 1}`,
+		onRemove,
+		"Remove investment",
+	);
+	card.appendChild(header);
+
+	const grid = document.createElement("div");
+	grid.className = "editor-grid";
+	grid.appendChild(createInputField({
+		label: "Name",
+		path: `${basePath}.name`,
+		value: investment.name ?? "",
+		inputType: "text",
+		tooltip: "Optional label displayed in reports for this investment.",
+		validation: { type: "text", maxLength: 120 },
+		maxLength: 120,
+		onChange: (value) => {
+			title.textContent = value || `${titlePrefix} ${index + 1}`;
+		},
+	}));
+	grid.appendChild(createInputField({
+		label: "Starting value",
+		path: `${basePath}.startingValue`,
+		value: investment.startingValue ?? "",
+		inputType: "number",
+		step: "0.01",
+		arrowStep: 100,
+		tooltip: "Current balance of the investment at the start date.",
+		validation: { type: "number" },
+	}));
+	grid.appendChild(createInputField({
+		label: "Annual return rate (%)",
+		path: `${basePath}.annualReturnRate`,
+		value: investment.annualReturnRate ?? "",
+		inputType: "number",
+		step: "0.01",
+		arrowStep: 1,
+		tooltip: "Expected average annual rate of return expressed as a percentage.",
+		validation: { type: "number" },
+	}));
+	grid.appendChild(createInputField({
+		label: "Tax rate on gains (%)",
+		path: `${basePath}.taxRate`,
+		value: investment.taxRate ?? "",
+		inputType: "number",
+		step: "0.01",
+		arrowStep: 1,
+		tooltip: "Optional tax rate applied to positive monthly gains.",
+		validation: { type: "number", min: 0, max: 100 },
+	}));
+	grid.appendChild(createCheckboxField({
+		label: "Contributions reduce cash balance",
+		path: `${basePath}.contributionsReduceIncome`,
+		value: investment.contributionsReduceIncome,
+		tooltip: "Enable when contribution amounts should be deducted from your simulated cash balance (e.g. Roth IRA or taxable brokerage). Disable for pre-tax payroll deductions such as traditional 401(k).",
+	}));
+	card.appendChild(grid);
+
+	card.appendChild(createEventCollection(investment.contributions, `${basePath}.contributions`, {
+		heading: "Contributions",
+		titlePrefix: "Contribution",
+		addLabel: "Add contribution",
+		emptyMessage: "No contributions scheduled.",
+	}));
+
+	card.appendChild(createEventCollection(investment.withdrawals, `${basePath}.withdrawals`, {
+		heading: "Withdrawals",
+		titlePrefix: "Withdrawal",
+		addLabel: "Add withdrawal",
+		emptyMessage: "No withdrawals scheduled.",
+		enableWithdrawalPercentage: true,
+		createEmptyEvent: createEmptyWithdrawalEvent,
+	}));
+
+	return card;
+}
+
 function createLoanCard(loan, basePath, index, onRemove) {
 	const card = document.createElement("div");
 	card.className = "editor-card";
@@ -753,6 +1123,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.principal ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 100,
 		tooltip: "Original loan principal before any down payment is applied.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -762,6 +1133,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.downPayment ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 100,
 		tooltip: "Amount paid up front to reduce the principal.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -771,6 +1143,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.interestRate ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 1,
 		tooltip: "Annual interest rate expressed as a percentage.",
 		validation: { type: "number", min: 0, max: 100 },
 	}));
@@ -799,6 +1172,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.escrow ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 100,
 		tooltip: "Optional monthly escrow payment associated with the loan.",
 		validation: { type: "number" },
 	}));
@@ -808,6 +1182,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.mortgageInsurance ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 100,
 		tooltip: "Monthly mortgage insurance premium, if applicable.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -817,6 +1192,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.mortgageInsuranceCutoff ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 1,
 		tooltip: "Loan-to-value percentage at which mortgage insurance ends.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -826,6 +1202,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.earlyPayoffThreshold ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 100,
 		tooltip: "Amount of cash you want to have remaining if you choose to pay off the loan early.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -850,6 +1227,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.sellPrice ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 100,
 		tooltip: "Expected sale price when the property is sold.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -859,6 +1237,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.sellCostsNet ?? "",
 		inputType: "number",
 		step: "0.01",
+		arrowStep: 100,
 		tooltip: "Net costs (positive) or proceeds (negative) incurred when selling.",
 		validation: { type: "number" },
 	}));
@@ -1032,6 +1411,8 @@ function createInputField({
 	tooltip = "",
 	validation = null,
 	maxLength,
+	disabled = false,
+	arrowStep,
 }) {
 	const wrapper = document.createElement("label");
 	wrapper.className = "editor-field";
@@ -1093,6 +1474,11 @@ function createInputField({
 	control.dataset.path = path;
 	attachFieldHelp({ wrapper, labelEl, tooltipText: tooltip, label });
 
+	if (disabled) {
+		control.disabled = true;
+		wrapper.classList.add("is-disabled");
+	}
+
 	const errorEl = document.createElement("span");
 	errorEl.className = "field-error hidden";
 
@@ -1104,6 +1490,7 @@ function createInputField({
 		path,
 		touched: false,
 		isValid: !validation,
+		disabled,
 	};
 
 	const eventType = inputType === "select" ? "change" : "input";
@@ -1127,8 +1514,88 @@ function createInputField({
 		updateEditorActionsState();
 	});
 
+	if (
+		inputType === "number"
+		&& typeof arrowStep === "number"
+		&& Number.isFinite(arrowStep)
+		&& arrowStep !== 0
+	) {
+		const derivePrecision = (rawStep) => {
+			if (!Number.isFinite(rawStep) || rawStep <= 0) {
+				return null;
+			}
+			const stepString = rawStep.toString().toLowerCase();
+			const scientificMatch = stepString.match(/e-(\d+)$/);
+			if (scientificMatch) {
+				return Number.parseInt(scientificMatch[1], 10) || 0;
+			}
+			const decimalIndex = stepString.indexOf(".");
+			return decimalIndex >= 0 ? stepString.length - decimalIndex - 1 : 0;
+		};
+
+		let precision = null;
+		if (typeof step === "number") {
+			precision = derivePrecision(step);
+		} else if (typeof step === "string") {
+			const parsedStep = Number(step);
+			if (Number.isFinite(parsedStep)) {
+				precision = derivePrecision(parsedStep);
+			}
+		}
+		if (precision === null && numberKind === "int") {
+			precision = 0;
+		}
+
+		const minValue = typeof min === "number"
+			? min
+			: validation && typeof validation.min === "number"
+				? validation.min
+				: undefined;
+		const maxValue = validation && typeof validation.max === "number"
+			? validation.max
+			: undefined;
+
+		control.addEventListener("keydown", (event) => {
+			if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+				return;
+			}
+			if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
+				return;
+			}
+			if (control.disabled || control.readOnly) {
+				return;
+			}
+			event.preventDefault();
+
+			const rawValue = control.value === "" ? null : Number(control.value);
+			const currentValue = Number.isFinite(rawValue) ? rawValue : 0;
+			const direction = event.key === "ArrowUp" ? 1 : -1;
+			let nextValue = currentValue + direction * arrowStep;
+			if (minValue !== undefined && nextValue < minValue) {
+				nextValue = minValue;
+			}
+			if (maxValue !== undefined && nextValue > maxValue) {
+				nextValue = maxValue;
+			}
+
+			let formattedValue;
+			if (numberKind === "int") {
+				nextValue = Math.trunc(nextValue);
+				formattedValue = String(nextValue);
+			} else if (precision !== null && precision >= 0) {
+				formattedValue = nextValue.toFixed(precision);
+			} else {
+				formattedValue = String(nextValue);
+			}
+
+			control.value = formattedValue;
+			const syntheticEvent = new Event("input", { bubbles: true });
+			control.dispatchEvent(syntheticEvent);
+		});
+	}
+
 	registeredInputs.push(entry);
-	if (entry.validation) {
+	if (entry.validation && !disabled) {
 		runFieldValidation(entry, { report: false });
 	} else {
 		entry.isValid = true;
@@ -1137,6 +1604,53 @@ function createInputField({
 	wrapper.appendChild(control);
 	wrapper.appendChild(errorEl);
 	return wrapper;
+}
+
+function findRegisteredInput(path) {
+	if (!path) {
+		return null;
+	}
+	return registeredInputs.find((entry) => entry.path === path) || null;
+}
+
+function setFieldDisabled(path, disabled) {
+	const entry = findRegisteredInput(path);
+	if (!entry) {
+		return;
+	}
+
+	entry.disabled = disabled;
+	entry.control.disabled = disabled;
+
+	const wrapper = entry.control.closest(".editor-field");
+	if (wrapper) {
+		wrapper.classList.toggle("is-disabled", disabled);
+	}
+
+	if (disabled) {
+		entry.isValid = true;
+		entry.errorEl.classList.add("hidden");
+		entry.control.classList.remove("invalid");
+		entry.control.removeAttribute("aria-invalid");
+	} else if (entry.validation) {
+		runFieldValidation(entry, { report: false });
+	}
+}
+
+function setFieldValue(path, value) {
+	const entry = findRegisteredInput(path);
+	if (!entry) {
+		return;
+	}
+
+	const control = entry.control;
+	if (value === null || value === undefined) {
+		control.value = "";
+	} else if (typeof value === "number") {
+		control.value = Number.isFinite(value) ? String(value) : "";
+	} else {
+		control.value = String(value);
+	}
 }
 
 function createCheckboxField({ label, path, value, tooltip = "" }) {
@@ -1192,6 +1706,10 @@ function validateEditorForm({ focusFirstError = false, report = false } = {}) {
 function runFieldValidation(entry, options = {}) {
 	const { validation } = entry;
 	if (!validation) {
+		entry.isValid = true;
+		return true;
+	}
+	if (entry.disabled) {
 		entry.isValid = true;
 		return true;
 	}
@@ -1299,6 +1817,14 @@ function createEmptyEvent() {
 	};
 }
 
+function createEmptyWithdrawalEvent() {
+	return {
+		name: "",
+		percentage: 0,
+		frequency: 1,
+	};
+}
+
 function createEmptyLoan() {
 	return {
 		name: "",
@@ -1319,12 +1845,25 @@ function createEmptyLoan() {
 	};
 }
 
+function createEmptyInvestment() {
+	return {
+		name: "",
+		startingValue: 0,
+		annualReturnRate: 0,
+		taxRate: 0,
+		contributions: [],
+		withdrawals: [],
+		contributionsReduceIncome: false,
+	};
+}
+
 function createEmptyScenario() {
 	return {
 		name: "",
 		active: true,
 		events: [],
 		loans: [],
+		investments: [],
 	};
 }
 
@@ -1337,6 +1876,7 @@ function createInitialConfig() {
 			deathDate: "",
 			events: [],
 			loans: [],
+			investments: [],
 		},
 		scenarios: [createEmptyScenario()],
 	};
