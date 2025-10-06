@@ -116,6 +116,8 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 		growthBeforeTax := state.CurrentValue * monthlyRate
 
 		tax := 0.0
+		// Taxes are applied monthly to the investment growth and are deducted immediately from the account balance.
+		// This means that each month's growth is taxed before being added to the account, affecting compounding.
 		if growthBeforeTax > 0 && inv.GetTaxRate() > 0 {
 			tax = growthBeforeTax * percentToDecimal(inv.GetTaxRate())
 		}
