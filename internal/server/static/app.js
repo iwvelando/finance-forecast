@@ -28,6 +28,9 @@ const tabPanels = {
 };
 const resultsTabButton = document.getElementById("tab-results");
 
+const ARROW_STEP_LARGE = 100;
+const ARROW_STEP_SMALL = 1;
+
 let activeTab = "config";
 let dataAvailable = false;
 let currentObjectUrl = null;
@@ -545,7 +548,7 @@ function renderConfigEditor() {
 		value: currentConfig.common.startingValue ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Balance at the end of the start month. Calculate this as your liquid net worth: cash and cash-equivalents minus short-term debts (e.g., credit card balances).",
 		validation: { type: "number" },
 	}));
@@ -810,7 +813,7 @@ function createEventCard(event, basePath, index, options = {}, onRemove) {
 		value: event.amount ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: amountTooltip,
 		validation: { type: "number" },
 	});
@@ -824,7 +827,7 @@ function createEventCard(event, basePath, index, options = {}, onRemove) {
 			value: event.percentage ?? "",
 			inputType: "number",
 			step: "0.01",
-			arrowStep: 1,
+			arrowStep: ARROW_STEP_SMALL,
 			min: 0,
 			tooltip: "Percentage of the investment balance withdrawn when this event occurs.",
 			validation: { type: "number" },
@@ -1041,7 +1044,7 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		value: investment.startingValue ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Current balance of the investment at the start date.",
 		validation: { type: "number" },
 	}));
@@ -1051,7 +1054,7 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		value: investment.annualReturnRate ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 1,
+		arrowStep: ARROW_STEP_SMALL,
 		tooltip: "Expected average annual rate of return expressed as a percentage.",
 		validation: { type: "number" },
 	}));
@@ -1061,7 +1064,7 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		value: investment.taxRate ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 1,
+		arrowStep: ARROW_STEP_SMALL,
 		tooltip: "Optional tax rate applied to positive monthly gains.",
 		validation: { type: "number", min: 0, max: 100 },
 	}));
@@ -1123,7 +1126,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.principal ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Original loan principal before any down payment is applied.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -1133,7 +1136,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.downPayment ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Amount paid up front to reduce the principal.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -1143,7 +1146,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.interestRate ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 1,
+		arrowStep: ARROW_STEP_SMALL,
 		tooltip: "Annual interest rate expressed as a percentage.",
 		validation: { type: "number", min: 0, max: 100 },
 	}));
@@ -1172,7 +1175,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.escrow ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Optional monthly escrow payment associated with the loan.",
 		validation: { type: "number" },
 	}));
@@ -1182,7 +1185,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.mortgageInsurance ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Monthly mortgage insurance premium, if applicable.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -1192,7 +1195,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.mortgageInsuranceCutoff ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 1,
+		arrowStep: ARROW_STEP_SMALL,
 		tooltip: "Loan-to-value percentage at which mortgage insurance ends.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -1202,7 +1205,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.earlyPayoffThreshold ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Amount of cash you want to have remaining if you choose to pay off the loan early.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -1227,7 +1230,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.sellPrice ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Expected sale price when the property is sold.",
 		validation: { type: "number", min: 0 },
 	}));
@@ -1237,7 +1240,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		value: loan.sellCostsNet ?? "",
 		inputType: "number",
 		step: "0.01",
-		arrowStep: 100,
+		arrowStep: ARROW_STEP_LARGE,
 		tooltip: "Net costs (positive) or proceeds (negative) incurred when selling.",
 		validation: { type: "number" },
 	}));
@@ -1397,6 +1400,101 @@ function attachFieldHelp({ wrapper, labelEl, tooltipText, label }) {
 	return { trigger, tooltip };
 }
 
+function deriveArrowPrecision(rawStep) {
+	if (!Number.isFinite(rawStep) || rawStep <= 0) {
+		return null;
+	}
+	const stepString = rawStep.toString().toLowerCase();
+	const scientificMatch = stepString.match(/e-(\d+)$/);
+	if (scientificMatch) {
+		return Number.parseInt(scientificMatch[1], 10) || 0;
+	}
+	const decimalIndex = stepString.indexOf(".");
+	return decimalIndex >= 0 ? stepString.length - decimalIndex - 1 : 0;
+}
+
+function computeArrowPrecision(step, numberKind) {
+	let precision = null;
+	if (typeof step === "number") {
+		precision = deriveArrowPrecision(step);
+	} else if (typeof step === "string") {
+		const parsedStep = Number(step);
+		if (Number.isFinite(parsedStep)) {
+			precision = deriveArrowPrecision(parsedStep);
+		}
+	}
+	if (precision === null && numberKind === "int") {
+		return 0;
+	}
+	return precision;
+}
+
+function resolveNumericBounds(min, validation) {
+	const minValue = typeof min === "number"
+		? min
+		: validation && typeof validation.min === "number"
+			? validation.min
+			: undefined;
+	const maxValue = validation && typeof validation.max === "number"
+		? validation.max
+		: undefined;
+
+	return { minValue, maxValue };
+}
+
+function clampValue(value, minValue, maxValue) {
+	let result = value;
+	if (minValue !== undefined && result < minValue) {
+		result = minValue;
+	}
+	if (maxValue !== undefined && result > maxValue) {
+		result = maxValue;
+	}
+	return result;
+}
+
+function setupArrowKeyStep(control, options) {
+	const { arrowStep, step, numberKind, min, validation } = options;
+	if (typeof arrowStep !== "number" || !Number.isFinite(arrowStep) || arrowStep === 0) {
+		return;
+	}
+
+	const precision = computeArrowPrecision(step, numberKind);
+	const { minValue, maxValue } = resolveNumericBounds(min, validation);
+
+	control.addEventListener("keydown", (event) => {
+		if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+			return;
+		}
+		if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
+			return;
+		}
+		if (control.disabled || control.readOnly) {
+			return;
+		}
+		event.preventDefault();
+
+		const rawValue = control.value === "" ? null : Number(control.value);
+		const currentValue = Number.isFinite(rawValue) ? rawValue : 0;
+		const direction = event.key === "ArrowUp" ? 1 : -1;
+		let nextValue = currentValue + direction * arrowStep;
+		nextValue = clampValue(nextValue, minValue, maxValue);
+
+		let formattedValue;
+		if (numberKind === "int") {
+			nextValue = Math.trunc(nextValue);
+			formattedValue = String(nextValue);
+		} else if (precision !== null && precision >= 0) {
+			formattedValue = nextValue.toFixed(precision);
+		} else {
+			formattedValue = String(nextValue);
+		}
+
+		control.value = formattedValue;
+		control.dispatchEvent(new Event("input", { bubbles: true }));
+	});
+}
+
 function createInputField({
 	label,
 	path,
@@ -1514,83 +1612,13 @@ function createInputField({
 		updateEditorActionsState();
 	});
 
-	if (
-		inputType === "number"
-		&& typeof arrowStep === "number"
-		&& Number.isFinite(arrowStep)
-		&& arrowStep !== 0
-	) {
-		const derivePrecision = (rawStep) => {
-			if (!Number.isFinite(rawStep) || rawStep <= 0) {
-				return null;
-			}
-			const stepString = rawStep.toString().toLowerCase();
-			const scientificMatch = stepString.match(/e-(\d+)$/);
-			if (scientificMatch) {
-				return Number.parseInt(scientificMatch[1], 10) || 0;
-			}
-			const decimalIndex = stepString.indexOf(".");
-			return decimalIndex >= 0 ? stepString.length - decimalIndex - 1 : 0;
-		};
-
-		let precision = null;
-		if (typeof step === "number") {
-			precision = derivePrecision(step);
-		} else if (typeof step === "string") {
-			const parsedStep = Number(step);
-			if (Number.isFinite(parsedStep)) {
-				precision = derivePrecision(parsedStep);
-			}
-		}
-		if (precision === null && numberKind === "int") {
-			precision = 0;
-		}
-
-		const minValue = typeof min === "number"
-			? min
-			: validation && typeof validation.min === "number"
-				? validation.min
-				: undefined;
-		const maxValue = validation && typeof validation.max === "number"
-			? validation.max
-			: undefined;
-
-		control.addEventListener("keydown", (event) => {
-			if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
-				return;
-			}
-			if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
-				return;
-			}
-			if (control.disabled || control.readOnly) {
-				return;
-			}
-			event.preventDefault();
-
-			const rawValue = control.value === "" ? null : Number(control.value);
-			const currentValue = Number.isFinite(rawValue) ? rawValue : 0;
-			const direction = event.key === "ArrowUp" ? 1 : -1;
-			let nextValue = currentValue + direction * arrowStep;
-			if (minValue !== undefined && nextValue < minValue) {
-				nextValue = minValue;
-			}
-			if (maxValue !== undefined && nextValue > maxValue) {
-				nextValue = maxValue;
-			}
-
-			let formattedValue;
-			if (numberKind === "int") {
-				nextValue = Math.trunc(nextValue);
-				formattedValue = String(nextValue);
-			} else if (precision !== null && precision >= 0) {
-				formattedValue = nextValue.toFixed(precision);
-			} else {
-				formattedValue = String(nextValue);
-			}
-
-			control.value = formattedValue;
-			const syntheticEvent = new Event("input", { bubbles: true });
-			control.dispatchEvent(syntheticEvent);
+	if (inputType === "number") {
+		setupArrowKeyStep(control, {
+			arrowStep,
+			step,
+			numberKind,
+			min,
+			validation,
 		});
 	}
 

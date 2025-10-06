@@ -8,6 +8,12 @@ import (
 	"go.uber.org/zap"
 )
 
+const percentDivisor = 100.0
+
+func percentToDecimal(percent float64) float64 {
+	return percent / percentDivisor
+}
+
 // Investment represents an investment account with contribution and withdrawal schedules.
 type Investment interface {
 	GetName() string
@@ -106,12 +112,12 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 			state.CurrentValue += contribution
 		}
 
-		monthlyRate := inv.GetAnnualReturnRate() / (constants.MonthsPerYear * 100.0)
+		monthlyRate := percentToDecimal(inv.GetAnnualReturnRate()) / constants.MonthsPerYear
 		growthBeforeTax := state.CurrentValue * monthlyRate
 
 		tax := 0.0
 		if growthBeforeTax > 0 && inv.GetTaxRate() > 0 {
-			tax = growthBeforeTax * (inv.GetTaxRate() / 100.0)
+			tax = growthBeforeTax * percentToDecimal(inv.GetTaxRate())
 		}
 
 		afterTaxGrowth := growthBeforeTax - tax
@@ -122,7 +128,7 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 		withdrawal := inv.GetWithdrawalForDate(date)
 		withdrawalPercent := inv.GetWithdrawalPercentageForDate(date)
 		if withdrawalPercent != 0 {
-			percentAmount := state.CurrentValue * (withdrawalPercent / 100.0)
+			percentAmount := state.CurrentValue * percentToDecimal(withdrawalPercent)
 			withdrawal += percentAmount
 		}
 		if withdrawal > state.CurrentValue {
