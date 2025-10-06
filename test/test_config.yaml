@@ -1,6 +1,7 @@
+---
 # Test configuration file for finance-forecast tests
-# This file contains the same structure as config.yaml.example but optimized for testing
-# DO NOT modify this file unless you understand the impact on test baseline values
+# This file mirrors config.yaml.example but uses smaller values for testing.
+# Do not modify unless you understand how changes affect baseline values.
 
 # Optional: Set a specific start date for the simulation (YYYY-MM format)
 startDate: 2025-06

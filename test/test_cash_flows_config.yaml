@@ -1,7 +1,10 @@
-# Deterministic cash-flow-only configuration for integration tests
-# startDate is set one month before the first event so that January 2025 is the first processed month.
-# Verification reference: cash flow arithmetic (see https://www.investopedia.com/terms/c/cashflow.asp)
-# Manual projection: 1,000 + (12 × 2,000) + (7 × 500) − (12 × 800) − (11 × 50) − (4 × 300) = 17,150
+---
+# Deterministic cash-flow configuration for integration tests
+# startDate is one month before the first event so January 2025 runs first.
+# Verification reference: cash flow arithmetic.
+# See https://www.investopedia.com/terms/c/cashflow.asp
+# Manual projection: 1,000 + (12 × 2,000) + (7 × 500) − (12 × 800)
+# − (11 × 50) − (4 × 300) = 17,150.
 startDate: 2024-12
 
 common:

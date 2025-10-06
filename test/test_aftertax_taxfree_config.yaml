@@ -1,5 +1,7 @@
-# After-tax, tax-free growth account (Roth IRA style) with percentage-based withdrawal
-# Expected 2026-01 balances: cash ≈ 2,218.78, account ≈ 9,207.24, total ≈ 11,426.02.
+---
+# After-tax Roth IRA-style account with percentage-based withdrawals.
+# Expected 2026-01 balances: cash ≈ 2,218.78, account ≈ 9,207.24.
+# Combined total ≈ 11,426.02.
 startDate: 2024-12
 
 common:
