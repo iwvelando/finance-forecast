@@ -442,6 +442,56 @@ button:disabled {
     position: relative;
 }
 
+.editor-field.field-with-addon {
+    width: 100%;
+    max-width: 360px;
+}
+
+.editor-input-with-addon {
+    display: flex;
+    align-items: stretch;
+    gap: 0.55rem;
+    width: 100%;
+}
+
+.editor-input-with-addon input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+}
+
+.field-inline-button {
+    padding: 0.35rem 0.8rem;
+    border-radius: 10px;
+    border: 1px solid rgba(27, 31, 59, 0.15);
+    background: rgba(27, 31, 59, 0.06);
+    color: rgba(27, 31, 59, 0.75);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    white-space: nowrap;
+    align-self: center;
+}
+
+.field-inline-button:hover:not(:disabled) {
+    background: rgba(58, 123, 213, 0.18);
+    border-color: rgba(58, 123, 213, 0.45);
+    color: #163d74;
+}
+
+.field-inline-button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(58, 123, 213, 0.25);
+}
+
+.field-inline-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: rgba(27, 31, 59, 0.05);
+    border-color: rgba(27, 31, 59, 0.12);
+}
+
 .editor-label {
     font-weight: 600;
     color: rgba(27, 31, 59, 0.75);

@@ -50,6 +50,13 @@ let latestForecastResponse = null;
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
+function getCurrentMonthValue() {
+	const now = new Date();
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, "0");
+	return `${year}-${month}`;
+}
+
 tabButtons.forEach((button) => {
 	button.addEventListener("click", () => {
 		const tab = button.dataset.tab;
@@ -535,6 +542,7 @@ function renderConfigEditor() {
 		tooltip: "First month of the simulation in YYYY-MM format.",
 		validation: { type: "month", required: true },
 		maxLength: 7,
+		enableNowShortcut: true,
 	}));
 	simulationSection.body.appendChild(simGrid);
 	configEditorRoot.appendChild(simulationSection.section);
@@ -803,9 +811,10 @@ function createEventCard(event, basePath, index, options = {}, onRemove) {
 		grid.appendChild(modeField);
 	}
 
-	const amountTooltip = enableWithdrawalPercentage
+	const defaultAmountTooltip = enableWithdrawalPercentage
 		? "Fixed dollar amount withdrawn when this event occurs."
 		: "Positive amounts represent income; negative amounts represent expenses.";
+	const amountTooltip = options.amountTooltip || defaultAmountTooltip;
 
 	const amountField = createInputField({
 		label: enableWithdrawalPercentage ? "Amount (USD)" : "Amount",
@@ -852,6 +861,7 @@ function createEventCard(event, basePath, index, options = {}, onRemove) {
 		tooltip: "Optional month when this event begins (YYYY-MM). Defaults to the simulation start month when left blank.",
 		validation: { type: "month" },
 		maxLength: 7,
+		enableNowShortcut: true,
 	}));
 	grid.appendChild(createInputField({
 		label: "End date (YYYY-MM)",
@@ -1081,6 +1091,7 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		titlePrefix: "Contribution",
 		addLabel: "Add contribution",
 		emptyMessage: "No contributions scheduled.",
+		amountTooltip: "Amount contributed each time this event occurs. Enter a positive value; contributions increase this investment's balance.",
 	}));
 
 	card.appendChild(createEventCollection(investment.withdrawals, `${basePath}.withdrawals`, {
@@ -1168,6 +1179,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		tooltip: "Required month when this loan begins (YYYY-MM). Loans do not assume a default start month.",
 		validation: { type: "month" },
 		maxLength: 7,
+		enableNowShortcut: true,
 	}));
 	grid.appendChild(createInputField({
 		label: "Escrow",
@@ -1251,6 +1263,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		titlePrefix: "Payment",
 		addLabel: "Add extra payment",
 		emptyMessage: "No extra principal payments configured.",
+		amountTooltip: "Extra payment applied directly to the loan principal each time this event occurs. Enter a positive value to reduce the balance faster.",
 	});
 	card.appendChild(extraPayments);
 
@@ -1511,6 +1524,7 @@ function createInputField({
 	maxLength,
 	disabled = false,
 	arrowStep,
+	enableNowShortcut = false,
 }) {
 	const wrapper = document.createElement("label");
 	wrapper.className = "editor-field";
@@ -1557,6 +1571,39 @@ function createInputField({
 		}
 	}
 
+	const addonButtons = [];
+	let controlMount = control;
+	const shouldAttachNowShortcut = enableNowShortcut && inputType === "month";
+
+	if (shouldAttachNowShortcut) {
+		wrapper.classList.add("field-with-addon");
+		const group = document.createElement("div");
+		group.className = "editor-input-with-addon";
+		group.appendChild(control);
+
+		const nowButton = document.createElement("button");
+		nowButton.type = "button";
+		nowButton.className = "field-inline-button";
+		nowButton.textContent = "Now";
+		nowButton.title = "Set to the current month";
+		nowButton.setAttribute("aria-label", "Set to the current month");
+		nowButton.addEventListener("click", () => {
+			const currentMonth = getCurrentMonthValue();
+			if (control.value !== currentMonth) {
+				control.value = currentMonth;
+				control.dispatchEvent(new Event("input", { bubbles: true }));
+			}
+			try {
+				control.focus({ preventScroll: true });
+			} catch (error) {
+				control.focus();
+			}
+		});
+		addonButtons.push(nowButton);
+		group.appendChild(nowButton);
+		controlMount = group;
+	}
+
 	if (typeof maxLength === "number" && control.tagName === "INPUT") {
 		control.maxLength = maxLength;
 	}
@@ -1575,6 +1622,9 @@ function createInputField({
 	if (disabled) {
 		control.disabled = true;
 		wrapper.classList.add("is-disabled");
+		addonButtons.forEach((button) => {
+			button.disabled = true;
+		});
 	}
 
 	const errorEl = document.createElement("span");
@@ -1589,6 +1639,7 @@ function createInputField({
 		touched: false,
 		isValid: !validation,
 		disabled,
+		addonButtons,
 	};
 
 	const eventType = inputType === "select" ? "change" : "input";
@@ -1629,7 +1680,7 @@ function createInputField({
 		entry.isValid = true;
 	}
 
-	wrapper.appendChild(control);
+	wrapper.appendChild(controlMount);
 	wrapper.appendChild(errorEl);
 	return wrapper;
 }
@@ -1653,6 +1704,12 @@ function setFieldDisabled(path, disabled) {
 	const wrapper = entry.control.closest(".editor-field");
 	if (wrapper) {
 		wrapper.classList.toggle("is-disabled", disabled);
+	}
+
+	if (Array.isArray(entry.addonButtons)) {
+		entry.addonButtons.forEach((button) => {
+			button.disabled = disabled;
+		});
 	}
 
 	if (disabled) {
