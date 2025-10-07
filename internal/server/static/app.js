@@ -40,6 +40,8 @@ let configDownloadUrl = null;
 let currentConfig = null;
 let hiddenLogging = null;
 let latestConfigYaml = "";
+let latestCsvContent = "";
+let latestCsvFilename = "";
 let defaultConfigInitialized = false;
 let isEditorLoading = false;
 let registeredInputs = [];
@@ -84,6 +86,9 @@ if (uploadConfigInput) {
 runForecastButton.addEventListener("click", handleRunForecast);
 downloadConfigButton.addEventListener("click", downloadCurrentConfig);
 resetConfigButton.addEventListener("click", handleResetConfig);
+if (downloadLink) {
+	downloadLink.addEventListener("click", handleCsvDownloadClick);
+}
 
 const updateStickyMetrics = () => {
 	if (tablistContainer) {
@@ -118,6 +123,68 @@ function toggleEditorLoading(isLoading) {
 	editorLoading.classList.toggle("hidden", !isLoading);
 	updateEditorActionsState();
 	updateStickyMetrics();
+}
+
+function isSavePickerAvailable() {
+	return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+}
+
+async function saveBlobWithPickerOrFallback(blob, options = {}) {
+	const {
+		suggestedName,
+		mimeType = "application/octet-stream",
+		extensions = [],
+		description = "File",
+		fallbackDownload,
+	} = options;
+
+	if (isSavePickerAvailable()) {
+		try {
+			const pickerOptions = {
+				suggestedName,
+				types: [
+					{
+						description,
+						accept: {
+							[mimeType]: Array.isArray(extensions) && extensions.length > 0 ? extensions : [`.${(suggestedName || "file").split(".").pop()}`],
+						},
+					},
+				],
+			};
+			const fileHandle = await window.showSaveFilePicker(pickerOptions);
+			const writable = await fileHandle.createWritable();
+			await writable.write(blob);
+			await writable.close();
+			return "saved";
+		} catch (error) {
+			if (error && error.name === "AbortError") {
+				return "cancelled";
+			}
+			console.warn("Save picker unavailable, falling back to anchor download.", error);
+		}
+	}
+
+	if (typeof fallbackDownload === "function") {
+		try {
+			await fallbackDownload();
+			return "fallback";
+		} catch (fallbackError) {
+			console.error("Fallback download failed", fallbackError);
+			return "error";
+		}
+	}
+
+	return "unavailable";
+}
+
+function triggerAnchorDownload(url, filename) {
+	const anchor = document.createElement("a");
+	anchor.href = url;
+	anchor.download = filename;
+	anchor.rel = "noopener";
+	document.body.appendChild(anchor);
+	anchor.click();
+	document.body.removeChild(anchor);
 }
 
 function initializeThemeControls() {
@@ -296,6 +363,8 @@ function clearResultsView() {
 	forecastDataset = null;
 	latestForecastResponse = null;
 	activeScenarioIndex = 0;
+	latestCsvContent = "";
+	latestCsvFilename = "";
 
 	if (currentObjectUrl) {
 		URL.revokeObjectURL(currentObjectUrl);
@@ -457,19 +526,63 @@ function renderScenarioTable() {
 }
 
 function prepareDownload(csvContent) {
+	if (!downloadLink) {
+		return;
+	}
+	if (currentObjectUrl) {
+		URL.revokeObjectURL(currentObjectUrl);
+		currentObjectUrl = null;
+	}
+
 	if (!csvContent) {
+		latestCsvContent = "";
+		latestCsvFilename = "";
+		downloadLink.classList.add("hidden");
 		return;
 	}
 
-	if (currentObjectUrl) {
-		URL.revokeObjectURL(currentObjectUrl);
+	latestCsvContent = csvContent;
+	latestCsvFilename = `forecast-${new Date().toISOString().split("T")[0]}.csv`;
+	downloadLink.classList.remove("hidden");
+}
+
+async function handleCsvDownloadClick() {
+	if (!downloadLink) {
+		return;
+	}
+	if (!latestCsvContent) {
+		showMessage("Run a forecast to generate results before downloading.", "error");
+		return;
 	}
 
-	const blob = new Blob([csvContent], { type: "text/csv" });
-	currentObjectUrl = URL.createObjectURL(blob);
-	downloadLink.href = currentObjectUrl;
-	downloadLink.download = `forecast-${new Date().toISOString().split("T")[0]}.csv`;
-	downloadLink.classList.remove("hidden");
+	const filename = latestCsvFilename || `forecast-${new Date().toISOString().split("T")[0]}.csv`;
+	const blob = new Blob([latestCsvContent], { type: "text/csv" });
+
+	const result = await saveBlobWithPickerOrFallback(blob, {
+		suggestedName: filename,
+		mimeType: "text/csv",
+		extensions: [".csv"],
+		description: "Forecast results (CSV)",
+		fallbackDownload: () => {
+			if (currentObjectUrl) {
+				URL.revokeObjectURL(currentObjectUrl);
+			}
+			currentObjectUrl = URL.createObjectURL(blob);
+			triggerAnchorDownload(currentObjectUrl, filename);
+		},
+	});
+
+	if (result === "saved") {
+		showMessage("Forecast CSV saved to your chosen location.", "success");
+	} else if (result === "fallback") {
+		showMessage("Forecast CSV downloaded to your device.", "success");
+	} else if (result === "cancelled") {
+		showMessage("CSV download canceled.", null);
+	} else if (result === "unavailable") {
+		showMessage("Downloading is not supported in this browser.", "error");
+	} else if (result === "error") {
+		showMessage("Unable to download the CSV file. Please try again.", "error");
+	}
 }
 
 function createHeaderCell(text, className = "") {
@@ -2240,8 +2353,16 @@ async function downloadCurrentConfig() {
 		}
 
 		latestConfigYaml = data.configYaml || "";
-		triggerConfigDownload(latestConfigYaml);
-		showMessage("Configuration downloaded.", "success");
+		const result = await triggerConfigDownload(latestConfigYaml);
+		if (result === "saved") {
+			showMessage("Configuration saved to your chosen location.", "success");
+		} else if (result === "fallback") {
+			showMessage("Configuration downloaded to your device.", "success");
+		} else if (result === "cancelled") {
+			showMessage("Configuration download canceled.", null);
+		} else {
+			showMessage("Unable to download the configuration. Please try again.", "error");
+		}
 	} catch (error) {
 		console.error("Download config failed", error);
 		showMessage(error.message, "error");
@@ -2252,24 +2373,29 @@ async function downloadCurrentConfig() {
 	}
 }
 
-function triggerConfigDownload(yamlContent) {
+async function triggerConfigDownload(yamlContent) {
 	if (!yamlContent) {
-		return;
+		return "unavailable";
 	}
 
-	if (configDownloadUrl) {
-		URL.revokeObjectURL(configDownloadUrl);
-	}
-
+	const filename = `config-${new Date().toISOString().split("T")[0]}.yaml`;
 	const blob = new Blob([yamlContent], { type: "text/yaml" });
-	configDownloadUrl = URL.createObjectURL(blob);
 
-	const anchor = document.createElement("a");
-	anchor.href = configDownloadUrl;
-	anchor.download = `config-${new Date().toISOString().split("T")[0]}.yaml`;
-	document.body.appendChild(anchor);
-	anchor.click();
-	document.body.removeChild(anchor);
+	const result = await saveBlobWithPickerOrFallback(blob, {
+		suggestedName: filename,
+		mimeType: "text/yaml",
+		extensions: [".yaml", ".yml"],
+		description: "Finance Forecast configuration",
+		fallbackDownload: () => {
+			if (configDownloadUrl) {
+				URL.revokeObjectURL(configDownloadUrl);
+			}
+			configDownloadUrl = URL.createObjectURL(blob);
+			triggerAnchorDownload(configDownloadUrl, filename);
+		},
+	});
+
+	return result;
 }
 
 function cloneDeep(value) {
