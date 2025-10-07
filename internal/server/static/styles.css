@@ -462,6 +462,12 @@ button:disabled {
     color: #1b1f3b;
 }
 
+.theme-dark .tab-button:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.28);
+    color: #eff6ff;
+    box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.35);
+}
+
 .tab-button.active {
     background: linear-gradient(135deg, rgba(58, 123, 213, 0.18), rgba(58, 96, 115, 0.18));
     color: #1b1f3b;
@@ -768,6 +774,12 @@ button:disabled {
     color: #163d74;
 }
 
+.theme-dark .field-help-button:hover,
+.theme-dark .field-help-button.active {
+    background: rgba(59, 130, 246, 0.4);
+    color: #eff6ff;
+}
+
 .field-help-button:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px rgba(58, 123, 213, 0.3);
@@ -964,6 +976,11 @@ button:disabled {
 .theme-toggle:hover {
     background: rgba(58, 123, 213, 0.15);
     color: #163d74;
+}
+
+.theme-dark .theme-toggle:hover {
+    background: rgba(59, 130, 246, 0.3);
+    color: #eff6ff;
 }
 
 .theme-toggle:focus-visible {
