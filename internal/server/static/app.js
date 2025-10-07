@@ -51,7 +51,13 @@ let helpTooltipInitialized = false;
 let forecastDataset = null;
 let activeScenarioIndex = 0;
 let latestForecastResponse = null;
+let editorPersistTimer = null;
+let editorStorageAvailable = null;
+let editorPersistenceHandlersRegistered = false;
 const THEME_STORAGE_KEY = "financeForecast.theme";
+const EDITOR_STORAGE_KEY = "financeForecast.editorState.v1";
+const EDITOR_STORAGE_VERSION = 1;
+const EDITOR_PERSIST_DEBOUNCE_MS = 600;
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -185,6 +191,157 @@ function triggerAnchorDownload(url, filename) {
 	document.body.appendChild(anchor);
 	anchor.click();
 	document.body.removeChild(anchor);
+}
+
+function isEditorStorageAvailable() {
+	if (editorStorageAvailable !== null) {
+		return editorStorageAvailable;
+	}
+	if (typeof window === "undefined" || !window.localStorage) {
+		editorStorageAvailable = false;
+		return editorStorageAvailable;
+	}
+	try {
+		const testKey = "__ff_editor_storage_test__";
+		window.localStorage.setItem(testKey, "1");
+		window.localStorage.removeItem(testKey);
+		editorStorageAvailable = true;
+	} catch (error) {
+		editorStorageAvailable = false;
+		console.warn("Local storage is unavailable; editor drafts will not be persisted.", error);
+	}
+	return editorStorageAvailable;
+}
+
+function isQuotaExceededError(error) {
+	if (!error) {
+		return false;
+	}
+	return error.name === "QuotaExceededError"
+		|| error.name === "NS_ERROR_DOM_QUOTA_REACHED"
+		|| error.code === 22
+		|| error.code === 1014;
+}
+
+function persistEditorState() {
+	if (!currentConfig || !isEditorStorageAvailable()) {
+		editorPersistTimer = null;
+		return;
+	}
+
+	const snapshot = {
+		version: EDITOR_STORAGE_VERSION,
+		updatedAt: new Date().toISOString(),
+		config: currentConfig,
+		logging: hiddenLogging,
+	};
+
+	try {
+		window.localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(snapshot));
+	} catch (error) {
+		if (isQuotaExceededError(error)) {
+			console.warn("Unable to persist editor state: storage quota exceeded.");
+		} else {
+			console.warn("Unable to persist editor state.", error);
+		}
+	}
+
+	editorPersistTimer = null;
+}
+
+function queuePersistEditorState(options = {}) {
+	const { immediate = false } = options;
+	if (!currentConfig || !isEditorStorageAvailable() || typeof window === "undefined") {
+		return;
+	}
+
+	if (immediate) {
+		if (editorPersistTimer !== null) {
+			window.clearTimeout(editorPersistTimer);
+			editorPersistTimer = null;
+		}
+		persistEditorState();
+		return;
+	}
+
+	if (editorPersistTimer !== null) {
+		window.clearTimeout(editorPersistTimer);
+	}
+
+	editorPersistTimer = window.setTimeout(() => {
+		persistEditorState();
+	}, EDITOR_PERSIST_DEBOUNCE_MS);
+}
+
+function clearPersistedEditorState() {
+	if (!isEditorStorageAvailable() || typeof window === "undefined") {
+		return;
+	}
+
+	if (editorPersistTimer !== null) {
+		window.clearTimeout(editorPersistTimer);
+		editorPersistTimer = null;
+	}
+
+	try {
+		window.localStorage.removeItem(EDITOR_STORAGE_KEY);
+	} catch (error) {
+		console.warn("Unable to clear persisted editor state.", error);
+	}
+}
+
+function loadPersistedEditorState() {
+	if (!isEditorStorageAvailable() || typeof window === "undefined") {
+		return null;
+	}
+
+	let rawValue = null;
+	try {
+		rawValue = window.localStorage.getItem(EDITOR_STORAGE_KEY);
+	} catch (error) {
+		console.warn("Unable to access persisted editor state.", error);
+		return null;
+	}
+
+	if (!rawValue) {
+		return null;
+	}
+
+	try {
+		const parsed = JSON.parse(rawValue);
+		if (!parsed || parsed.version !== EDITOR_STORAGE_VERSION || !parsed.config) {
+			return null;
+		}
+		const prepared = prepareConfigForEditing(parsed.config);
+		const logging = parsed.logging ? cloneDeep(parsed.logging) : prepared.logging || null;
+		return {
+			config: prepared.config,
+			logging: logging || getDefaultLoggingConfig(),
+			updatedAt: parsed.updatedAt || null,
+		};
+	} catch (error) {
+		console.warn("Failed to parse persisted editor state. Clearing saved draft.", error);
+		try {
+			window.localStorage.removeItem(EDITOR_STORAGE_KEY);
+		} catch (removeError) {
+			console.warn("Unable to clear invalid persisted editor state.", removeError);
+		}
+		return null;
+	}
+}
+
+function setupEditorPersistenceHandlers() {
+	if (editorPersistenceHandlersRegistered || typeof window === "undefined") {
+		return;
+	}
+	if (!isEditorStorageAvailable()) {
+		return;
+	}
+
+	const flush = () => queuePersistEditorState({ immediate: true });
+	window.addEventListener("beforeunload", flush);
+	window.addEventListener("pagehide", flush);
+	editorPersistenceHandlersRegistered = true;
 }
 
 function initializeThemeControls() {
@@ -819,6 +976,7 @@ function renderConfigEditor() {
 
 	updateStickyMetrics();
 	validateEditorForm();
+	queuePersistEditorState();
 }
 
 function createSection(title, description) {
@@ -2280,6 +2438,7 @@ function handleResetConfig() {
 		return;
 	}
 
+	clearPersistedEditorState();
 	currentConfig = createInitialConfig();
 	hiddenLogging = getDefaultLoggingConfig();
 	latestConfigYaml = "";
@@ -2295,17 +2454,32 @@ function handleResetConfig() {
 }
 
 function initializeWorkspace() {
+	let restoredState = null;
 	if (!defaultConfigInitialized) {
-		currentConfig = createInitialConfig();
-		hiddenLogging = getDefaultLoggingConfig();
+		restoredState = loadPersistedEditorState();
+		if (restoredState && restoredState.config) {
+			currentConfig = restoredState.config;
+			hiddenLogging = restoredState.logging || getDefaultLoggingConfig();
+			latestConfigYaml = "";
+		} else {
+			currentConfig = createInitialConfig();
+			hiddenLogging = getDefaultLoggingConfig();
+			latestConfigYaml = "";
+		}
 		defaultConfigInitialized = true;
 	}
 
+	setupEditorPersistenceHandlers();
 	clearResultsView();
 	renderConfigEditor();
 	setDataAvailability(false);
 	switchTab("config");
-	showMessage("Start by building a plan or upload an existing YAML configuration.", null);
+
+	if (restoredState) {
+		showMessage("Restored your in-progress plan from the previous session. Continue editing or reset if you'd like to start fresh.", "success");
+	} else {
+		showMessage("Start by building a plan or upload an existing YAML configuration.", null);
+	}
 }
 
 function buildConfigPayload(options = {}) {
@@ -2478,6 +2652,8 @@ function updateConfigAtPath(path, value, valueType, numberKind) {
 			container[key] = value;
 		}
 	}
+
+	queuePersistEditorState();
 }
 
 function splitPath(path) {
