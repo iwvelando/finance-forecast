@@ -20,6 +20,7 @@ if (configPanel) {
 }
 
 const rootStyle = document.documentElement.style;
+const rootElement = document.documentElement;
 
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = {
@@ -27,6 +28,7 @@ const tabPanels = {
 	config: configPanel,
 };
 const resultsTabButton = document.getElementById("tab-results");
+const themeToggleButtons = Array.from(document.querySelectorAll(".theme-toggle"));
 
 const ARROW_STEP_LARGE = 100;
 const ARROW_STEP_SMALL = 1;
@@ -38,6 +40,8 @@ let configDownloadUrl = null;
 let currentConfig = null;
 let hiddenLogging = null;
 let latestConfigYaml = "";
+let latestCsvContent = "";
+let latestCsvFilename = "";
 let defaultConfigInitialized = false;
 let isEditorLoading = false;
 let registeredInputs = [];
@@ -47,8 +51,22 @@ let helpTooltipInitialized = false;
 let forecastDataset = null;
 let activeScenarioIndex = 0;
 let latestForecastResponse = null;
+let editorPersistTimer = null;
+let editorStorageAvailable = null;
+let editorPersistenceHandlersRegistered = false;
+const THEME_STORAGE_KEY = "financeForecast.theme";
+const EDITOR_STORAGE_KEY = "financeForecast.editorState.v1";
+const EDITOR_STORAGE_VERSION = 1;
+const EDITOR_PERSIST_DEBOUNCE_MS = 600;
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function getCurrentMonthValue() {
+	const now = new Date();
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, "0");
+	return `${year}-${month}`;
+}
 
 tabButtons.forEach((button) => {
 	button.addEventListener("click", () => {
@@ -74,6 +92,9 @@ if (uploadConfigInput) {
 runForecastButton.addEventListener("click", handleRunForecast);
 downloadConfigButton.addEventListener("click", downloadCurrentConfig);
 resetConfigButton.addEventListener("click", handleResetConfig);
+if (downloadLink) {
+	downloadLink.addEventListener("click", handleCsvDownloadClick);
+}
 
 const updateStickyMetrics = () => {
 	if (tablistContainer) {
@@ -97,6 +118,7 @@ window.addEventListener("resize", updateStickyMetrics);
 window.addEventListener("load", updateStickyMetrics);
 
 initializeWorkspace();
+initializeThemeControls();
 
 function toggleEditorLoading(isLoading) {
 	isEditorLoading = isLoading;
@@ -107,6 +129,309 @@ function toggleEditorLoading(isLoading) {
 	editorLoading.classList.toggle("hidden", !isLoading);
 	updateEditorActionsState();
 	updateStickyMetrics();
+}
+
+function isSavePickerAvailable() {
+	return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+}
+
+async function saveBlobWithPickerOrFallback(blob, options = {}) {
+	const {
+		suggestedName,
+		mimeType = "application/octet-stream",
+		extensions = [],
+		description = "File",
+		fallbackDownload,
+	} = options;
+
+	if (isSavePickerAvailable()) {
+		try {
+			const pickerOptions = {
+				suggestedName,
+				types: [
+					{
+						description,
+						accept: {
+							[mimeType]: Array.isArray(extensions) && extensions.length > 0 ? extensions : [`.${(suggestedName || "file").split(".").pop()}`],
+						},
+					},
+				],
+			};
+			const fileHandle = await window.showSaveFilePicker(pickerOptions);
+			const writable = await fileHandle.createWritable();
+			await writable.write(blob);
+			await writable.close();
+			return "saved";
+		} catch (error) {
+			if (error && error.name === "AbortError") {
+				return "cancelled";
+			}
+			console.warn("Save picker unavailable, falling back to anchor download.", error);
+		}
+	}
+
+	if (typeof fallbackDownload === "function") {
+		try {
+			await fallbackDownload();
+			return "fallback";
+		} catch (fallbackError) {
+			console.error("Fallback download failed", fallbackError);
+			return "error";
+		}
+	}
+
+	return "unavailable";
+}
+
+function triggerAnchorDownload(url, filename) {
+	const anchor = document.createElement("a");
+	anchor.href = url;
+	anchor.download = filename;
+	anchor.rel = "noopener";
+	document.body.appendChild(anchor);
+	anchor.click();
+	document.body.removeChild(anchor);
+}
+
+function isEditorStorageAvailable() {
+	if (editorStorageAvailable !== null) {
+		return editorStorageAvailable;
+	}
+	if (typeof window === "undefined" || !window.localStorage) {
+		editorStorageAvailable = false;
+		return editorStorageAvailable;
+	}
+	try {
+		const testKey = "__ff_editor_storage_test__";
+		window.localStorage.setItem(testKey, "1");
+		window.localStorage.removeItem(testKey);
+		editorStorageAvailable = true;
+	} catch (error) {
+		editorStorageAvailable = false;
+		console.warn("Local storage is unavailable; editor drafts will not be persisted.", error);
+	}
+	return editorStorageAvailable;
+}
+
+function isQuotaExceededError(error) {
+	if (!error) {
+		return false;
+	}
+	return error.name === "QuotaExceededError"
+		|| error.name === "NS_ERROR_DOM_QUOTA_REACHED"
+		|| error.code === 22
+		|| error.code === 1014;
+}
+
+function persistEditorState() {
+	if (!currentConfig || !isEditorStorageAvailable()) {
+		editorPersistTimer = null;
+		return;
+	}
+
+	const snapshot = {
+		version: EDITOR_STORAGE_VERSION,
+		updatedAt: new Date().toISOString(),
+		config: currentConfig,
+		logging: hiddenLogging,
+	};
+
+	try {
+		window.localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(snapshot));
+	} catch (error) {
+		if (isQuotaExceededError(error)) {
+			console.warn("Unable to persist editor state: storage quota exceeded.");
+		} else {
+			console.warn("Unable to persist editor state.", error);
+		}
+	}
+
+	editorPersistTimer = null;
+}
+
+function queuePersistEditorState(options = {}) {
+	const { immediate = false } = options;
+	if (!currentConfig || !isEditorStorageAvailable() || typeof window === "undefined") {
+		return;
+	}
+
+	if (immediate) {
+		if (editorPersistTimer !== null) {
+			window.clearTimeout(editorPersistTimer);
+			editorPersistTimer = null;
+		}
+		persistEditorState();
+		return;
+	}
+
+	if (editorPersistTimer !== null) {
+		window.clearTimeout(editorPersistTimer);
+	}
+
+	editorPersistTimer = window.setTimeout(() => {
+		persistEditorState();
+	}, EDITOR_PERSIST_DEBOUNCE_MS);
+}
+
+function clearPersistedEditorState() {
+	if (!isEditorStorageAvailable() || typeof window === "undefined") {
+		return;
+	}
+
+	if (editorPersistTimer !== null) {
+		window.clearTimeout(editorPersistTimer);
+		editorPersistTimer = null;
+	}
+
+	try {
+		window.localStorage.removeItem(EDITOR_STORAGE_KEY);
+	} catch (error) {
+		console.warn("Unable to clear persisted editor state.", error);
+	}
+}
+
+function loadPersistedEditorState() {
+	if (!isEditorStorageAvailable() || typeof window === "undefined") {
+		return null;
+	}
+
+	let rawValue = null;
+	try {
+		rawValue = window.localStorage.getItem(EDITOR_STORAGE_KEY);
+	} catch (error) {
+		console.warn("Unable to access persisted editor state.", error);
+		return null;
+	}
+
+	if (!rawValue) {
+		return null;
+	}
+
+	try {
+		const parsed = JSON.parse(rawValue);
+		if (!parsed || parsed.version !== EDITOR_STORAGE_VERSION || !parsed.config) {
+			return null;
+		}
+		const prepared = prepareConfigForEditing(parsed.config);
+		const logging = parsed.logging ? cloneDeep(parsed.logging) : prepared.logging || null;
+		return {
+			config: prepared.config,
+			logging: logging || getDefaultLoggingConfig(),
+			updatedAt: parsed.updatedAt || null,
+		};
+	} catch (error) {
+		console.warn("Failed to parse persisted editor state. Clearing saved draft.", error);
+		try {
+			window.localStorage.removeItem(EDITOR_STORAGE_KEY);
+		} catch (removeError) {
+			console.warn("Unable to clear invalid persisted editor state.", removeError);
+		}
+		return null;
+	}
+}
+
+function setupEditorPersistenceHandlers() {
+	if (editorPersistenceHandlersRegistered || typeof window === "undefined") {
+		return;
+	}
+	if (!isEditorStorageAvailable()) {
+		return;
+	}
+
+	const flush = () => queuePersistEditorState({ immediate: true });
+	window.addEventListener("beforeunload", flush);
+	window.addEventListener("pagehide", flush);
+	editorPersistenceHandlersRegistered = true;
+}
+
+function initializeThemeControls() {
+	applyStoredThemePreference();
+	setupSystemThemeWatcher();
+	if (themeToggleButtons.length === 0) {
+		return;
+	}
+
+	themeToggleButtons.forEach((button) => {
+		button.addEventListener("click", () => {
+			const mode = button.dataset.themeMode;
+			if (!mode) {
+				return;
+			}
+			setThemePreference(mode);
+		});
+	});
+
+	updateThemeToggleState(getThemePreference());
+}
+
+function getThemePreference() {
+	return localStorage.getItem(THEME_STORAGE_KEY) || "system";
+}
+
+function setThemePreference(mode) {
+	const normalized = mode === "light" || mode === "dark" ? mode : "system";
+	localStorage.setItem(THEME_STORAGE_KEY, normalized);
+	applyTheme(normalized);
+	updateThemeToggleState(normalized);
+}
+
+function applyStoredThemePreference() {
+	const preference = getThemePreference();
+	applyTheme(preference);
+}
+
+function applyTheme(mode) {
+	rootElement.setAttribute("data-theme", mode);
+	if (mode === "dark") {
+		rootElement.classList.add("theme-dark");
+		rootElement.classList.remove("theme-light");
+		rootStyle.setProperty("color-scheme", "dark");
+	} else if (mode === "light") {
+		rootElement.classList.add("theme-light");
+		rootElement.classList.remove("theme-dark");
+		rootStyle.setProperty("color-scheme", "light");
+	} else {
+		rootElement.classList.remove("theme-light", "theme-dark");
+		const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+		rootElement.classList.toggle("theme-dark", prefersDark);
+		rootElement.classList.toggle("theme-light", !prefersDark);
+		rootStyle.setProperty("color-scheme", prefersDark ? "dark" : "light");
+	}
+}
+
+function updateThemeToggleState(activeMode) {
+	if (themeToggleButtons.length === 0) {
+		return;
+	}
+
+	themeToggleButtons.forEach((button) => {
+		const mode = button.dataset.themeMode;
+		if (!mode) {
+			return;
+		}
+		const isActive = mode === activeMode;
+		button.classList.toggle("active", isActive);
+		button.setAttribute("aria-pressed", isActive ? "true" : "false");
+	});
+}
+
+function setupSystemThemeWatcher() {
+	if (!window.matchMedia) {
+		return;
+	}
+	const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+	const handler = () => {
+		if (getThemePreference() !== "system") {
+			return;
+		}
+		applyTheme("system");
+		updateThemeToggleState("system");
+	};
+	if (typeof mediaQuery.addEventListener === "function") {
+		mediaQuery.addEventListener("change", handler);
+	} else if (typeof mediaQuery.addListener === "function") {
+		mediaQuery.addListener(handler);
+	}
 }
 
 function handleConfigFileSelection(event) {
@@ -195,6 +520,8 @@ function clearResultsView() {
 	forecastDataset = null;
 	latestForecastResponse = null;
 	activeScenarioIndex = 0;
+	latestCsvContent = "";
+	latestCsvFilename = "";
 
 	if (currentObjectUrl) {
 		URL.revokeObjectURL(currentObjectUrl);
@@ -356,19 +683,63 @@ function renderScenarioTable() {
 }
 
 function prepareDownload(csvContent) {
+	if (!downloadLink) {
+		return;
+	}
+	if (currentObjectUrl) {
+		URL.revokeObjectURL(currentObjectUrl);
+		currentObjectUrl = null;
+	}
+
 	if (!csvContent) {
+		latestCsvContent = "";
+		latestCsvFilename = "";
+		downloadLink.classList.add("hidden");
 		return;
 	}
 
-	if (currentObjectUrl) {
-		URL.revokeObjectURL(currentObjectUrl);
+	latestCsvContent = csvContent;
+	latestCsvFilename = `forecast-${new Date().toISOString().split("T")[0]}.csv`;
+	downloadLink.classList.remove("hidden");
+}
+
+async function handleCsvDownloadClick() {
+	if (!downloadLink) {
+		return;
+	}
+	if (!latestCsvContent) {
+		showMessage("Run a forecast to generate results before downloading.", "error");
+		return;
 	}
 
-	const blob = new Blob([csvContent], { type: "text/csv" });
-	currentObjectUrl = URL.createObjectURL(blob);
-	downloadLink.href = currentObjectUrl;
-	downloadLink.download = `forecast-${new Date().toISOString().split("T")[0]}.csv`;
-	downloadLink.classList.remove("hidden");
+	const filename = latestCsvFilename || `forecast-${new Date().toISOString().split("T")[0]}.csv`;
+	const blob = new Blob([latestCsvContent], { type: "text/csv" });
+
+	const result = await saveBlobWithPickerOrFallback(blob, {
+		suggestedName: filename,
+		mimeType: "text/csv",
+		extensions: [".csv"],
+		description: "Forecast results (CSV)",
+		fallbackDownload: () => {
+			if (currentObjectUrl) {
+				URL.revokeObjectURL(currentObjectUrl);
+			}
+			currentObjectUrl = URL.createObjectURL(blob);
+			triggerAnchorDownload(currentObjectUrl, filename);
+		},
+	});
+
+	if (result === "saved") {
+		showMessage("Forecast CSV saved to your chosen location.", "success");
+	} else if (result === "fallback") {
+		showMessage("Forecast CSV downloaded to your device.", "success");
+	} else if (result === "cancelled") {
+		showMessage("CSV download canceled.", null);
+	} else if (result === "unavailable") {
+		showMessage("Downloading is not supported in this browser.", "error");
+	} else if (result === "error") {
+		showMessage("Unable to download the CSV file. Please try again.", "error");
+	}
 }
 
 function createHeaderCell(text, className = "") {
@@ -535,6 +906,7 @@ function renderConfigEditor() {
 		tooltip: "First month of the simulation in YYYY-MM format.",
 		validation: { type: "month", required: true },
 		maxLength: 7,
+		enableNowShortcut: true,
 	}));
 	simulationSection.body.appendChild(simGrid);
 	configEditorRoot.appendChild(simulationSection.section);
@@ -604,6 +976,7 @@ function renderConfigEditor() {
 
 	updateStickyMetrics();
 	validateEditorForm();
+	queuePersistEditorState();
 }
 
 function createSection(title, description) {
@@ -803,9 +1176,10 @@ function createEventCard(event, basePath, index, options = {}, onRemove) {
 		grid.appendChild(modeField);
 	}
 
-	const amountTooltip = enableWithdrawalPercentage
+	const defaultAmountTooltip = enableWithdrawalPercentage
 		? "Fixed dollar amount withdrawn when this event occurs."
 		: "Positive amounts represent income; negative amounts represent expenses.";
+	const amountTooltip = options.amountTooltip || defaultAmountTooltip;
 
 	const amountField = createInputField({
 		label: enableWithdrawalPercentage ? "Amount (USD)" : "Amount",
@@ -852,6 +1226,7 @@ function createEventCard(event, basePath, index, options = {}, onRemove) {
 		tooltip: "Optional month when this event begins (YYYY-MM). Defaults to the simulation start month when left blank.",
 		validation: { type: "month" },
 		maxLength: 7,
+		enableNowShortcut: true,
 	}));
 	grid.appendChild(createInputField({
 		label: "End date (YYYY-MM)",
@@ -1081,6 +1456,7 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		titlePrefix: "Contribution",
 		addLabel: "Add contribution",
 		emptyMessage: "No contributions scheduled.",
+		amountTooltip: "Amount contributed each time this event occurs. Enter a positive value; contributions increase this investment's balance.",
 	}));
 
 	card.appendChild(createEventCollection(investment.withdrawals, `${basePath}.withdrawals`, {
@@ -1168,6 +1544,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		tooltip: "Required month when this loan begins (YYYY-MM). Loans do not assume a default start month.",
 		validation: { type: "month" },
 		maxLength: 7,
+		enableNowShortcut: true,
 	}));
 	grid.appendChild(createInputField({
 		label: "Escrow",
@@ -1251,6 +1628,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		titlePrefix: "Payment",
 		addLabel: "Add extra payment",
 		emptyMessage: "No extra principal payments configured.",
+		amountTooltip: "Extra payment applied directly to the loan principal each time this event occurs. Enter a positive value to reduce the balance faster.",
 	});
 	card.appendChild(extraPayments);
 
@@ -1511,6 +1889,7 @@ function createInputField({
 	maxLength,
 	disabled = false,
 	arrowStep,
+	enableNowShortcut = false,
 }) {
 	const wrapper = document.createElement("label");
 	wrapper.className = "editor-field";
@@ -1557,6 +1936,39 @@ function createInputField({
 		}
 	}
 
+	const addonButtons = [];
+	let controlMount = control;
+	const shouldAttachNowShortcut = enableNowShortcut && inputType === "month";
+
+	if (shouldAttachNowShortcut) {
+		wrapper.classList.add("field-with-addon");
+		const group = document.createElement("div");
+		group.className = "editor-input-with-addon";
+		group.appendChild(control);
+
+		const nowButton = document.createElement("button");
+		nowButton.type = "button";
+		nowButton.className = "field-inline-button";
+		nowButton.textContent = "Now";
+		nowButton.title = "Set to the current month";
+		nowButton.setAttribute("aria-label", "Set to the current month");
+		nowButton.addEventListener("click", () => {
+			const currentMonth = getCurrentMonthValue();
+			if (control.value !== currentMonth) {
+				control.value = currentMonth;
+				control.dispatchEvent(new Event("input", { bubbles: true }));
+			}
+			try {
+				control.focus({ preventScroll: true });
+			} catch (error) {
+				control.focus();
+			}
+		});
+		addonButtons.push(nowButton);
+		group.appendChild(nowButton);
+		controlMount = group;
+	}
+
 	if (typeof maxLength === "number" && control.tagName === "INPUT") {
 		control.maxLength = maxLength;
 	}
@@ -1575,6 +1987,9 @@ function createInputField({
 	if (disabled) {
 		control.disabled = true;
 		wrapper.classList.add("is-disabled");
+		addonButtons.forEach((button) => {
+			button.disabled = true;
+		});
 	}
 
 	const errorEl = document.createElement("span");
@@ -1589,6 +2004,7 @@ function createInputField({
 		touched: false,
 		isValid: !validation,
 		disabled,
+		addonButtons,
 	};
 
 	const eventType = inputType === "select" ? "change" : "input";
@@ -1629,7 +2045,7 @@ function createInputField({
 		entry.isValid = true;
 	}
 
-	wrapper.appendChild(control);
+	wrapper.appendChild(controlMount);
 	wrapper.appendChild(errorEl);
 	return wrapper;
 }
@@ -1653,6 +2069,12 @@ function setFieldDisabled(path, disabled) {
 	const wrapper = entry.control.closest(".editor-field");
 	if (wrapper) {
 		wrapper.classList.toggle("is-disabled", disabled);
+	}
+
+	if (Array.isArray(entry.addonButtons)) {
+		entry.addonButtons.forEach((button) => {
+			button.disabled = disabled;
+		});
 	}
 
 	if (disabled) {
@@ -2016,6 +2438,7 @@ function handleResetConfig() {
 		return;
 	}
 
+	clearPersistedEditorState();
 	currentConfig = createInitialConfig();
 	hiddenLogging = getDefaultLoggingConfig();
 	latestConfigYaml = "";
@@ -2031,17 +2454,32 @@ function handleResetConfig() {
 }
 
 function initializeWorkspace() {
+	let restoredState = null;
 	if (!defaultConfigInitialized) {
-		currentConfig = createInitialConfig();
-		hiddenLogging = getDefaultLoggingConfig();
+		restoredState = loadPersistedEditorState();
+		if (restoredState && restoredState.config) {
+			currentConfig = restoredState.config;
+			hiddenLogging = restoredState.logging || getDefaultLoggingConfig();
+			latestConfigYaml = "";
+		} else {
+			currentConfig = createInitialConfig();
+			hiddenLogging = getDefaultLoggingConfig();
+			latestConfigYaml = "";
+		}
 		defaultConfigInitialized = true;
 	}
 
+	setupEditorPersistenceHandlers();
 	clearResultsView();
 	renderConfigEditor();
 	setDataAvailability(false);
 	switchTab("config");
-	showMessage("Start by building a plan or upload an existing YAML configuration.", null);
+
+	if (restoredState) {
+		showMessage("Restored your in-progress plan from the previous session. Continue editing or reset if you'd like to start fresh.", "success");
+	} else {
+		showMessage("Start by building a plan or upload an existing YAML configuration.", null);
+	}
 }
 
 function buildConfigPayload(options = {}) {
@@ -2089,8 +2527,16 @@ async function downloadCurrentConfig() {
 		}
 
 		latestConfigYaml = data.configYaml || "";
-		triggerConfigDownload(latestConfigYaml);
-		showMessage("Configuration downloaded.", "success");
+		const result = await triggerConfigDownload(latestConfigYaml);
+		if (result === "saved") {
+			showMessage("Configuration saved to your chosen location.", "success");
+		} else if (result === "fallback") {
+			showMessage("Configuration downloaded to your device.", "success");
+		} else if (result === "cancelled") {
+			showMessage("Configuration download canceled.", null);
+		} else {
+			showMessage("Unable to download the configuration. Please try again.", "error");
+		}
 	} catch (error) {
 		console.error("Download config failed", error);
 		showMessage(error.message, "error");
@@ -2101,24 +2547,29 @@ async function downloadCurrentConfig() {
 	}
 }
 
-function triggerConfigDownload(yamlContent) {
+async function triggerConfigDownload(yamlContent) {
 	if (!yamlContent) {
-		return;
+		return "unavailable";
 	}
 
-	if (configDownloadUrl) {
-		URL.revokeObjectURL(configDownloadUrl);
-	}
-
+	const filename = `config-${new Date().toISOString().split("T")[0]}.yaml`;
 	const blob = new Blob([yamlContent], { type: "text/yaml" });
-	configDownloadUrl = URL.createObjectURL(blob);
 
-	const anchor = document.createElement("a");
-	anchor.href = configDownloadUrl;
-	anchor.download = `config-${new Date().toISOString().split("T")[0]}.yaml`;
-	document.body.appendChild(anchor);
-	anchor.click();
-	document.body.removeChild(anchor);
+	const result = await saveBlobWithPickerOrFallback(blob, {
+		suggestedName: filename,
+		mimeType: "text/yaml",
+		extensions: [".yaml", ".yml"],
+		description: "Finance Forecast configuration",
+		fallbackDownload: () => {
+			if (configDownloadUrl) {
+				URL.revokeObjectURL(configDownloadUrl);
+			}
+			configDownloadUrl = URL.createObjectURL(blob);
+			triggerAnchorDownload(configDownloadUrl, filename);
+		},
+	});
+
+	return result;
 }
 
 function cloneDeep(value) {
@@ -2201,6 +2652,8 @@ function updateConfigAtPath(path, value, valueType, numberKind) {
 			container[key] = value;
 		}
 	}
+
+	queuePersistEditorState();
 }
 
 function splitPath(path) {

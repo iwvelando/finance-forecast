@@ -26,7 +26,7 @@
                     <h2>Simulation Results</h2>
                     <div class="results-actions">
                         <span id="duration" class="muted-text"></span>
-                        <a id="download-link" class="button secondary hidden" download="forecast.csv">Download CSV</a>
+                        <button id="download-link" class="button secondary hidden" type="button">Download CSV</button>
                     </div>
                 </div>
                 <div id="warnings" class="warnings hidden" aria-live="polite"></div>
@@ -48,6 +48,11 @@
                             <button id="download-config-button" type="button" class="button secondary" disabled>Download Config</button>
                             <button id="reset-config-button" type="button" class="button subtle">Reset Config</button>
                             <span id="editor-loading" class="hidden">Processing…</span>
+                        </div>
+                        <div class="theme-toggle-group" role="group" aria-label="Theme mode">
+                            <button id="theme-system" type="button" class="theme-toggle" data-theme-mode="system">System</button>
+                            <button id="theme-light" type="button" class="theme-toggle" data-theme-mode="light">Light</button>
+                            <button id="theme-dark" type="button" class="theme-toggle" data-theme-mode="dark">Dark</button>
                         </div>
                     </div>
                 </div>
