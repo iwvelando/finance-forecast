@@ -20,6 +20,7 @@ if (configPanel) {
 }
 
 const rootStyle = document.documentElement.style;
+const rootElement = document.documentElement;
 
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = {
@@ -27,6 +28,7 @@ const tabPanels = {
 	config: configPanel,
 };
 const resultsTabButton = document.getElementById("tab-results");
+const themeToggleButtons = Array.from(document.querySelectorAll(".theme-toggle"));
 
 const ARROW_STEP_LARGE = 100;
 const ARROW_STEP_SMALL = 1;
@@ -47,6 +49,7 @@ let helpTooltipInitialized = false;
 let forecastDataset = null;
 let activeScenarioIndex = 0;
 let latestForecastResponse = null;
+const THEME_STORAGE_KEY = "financeForecast.theme";
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -104,6 +107,7 @@ window.addEventListener("resize", updateStickyMetrics);
 window.addEventListener("load", updateStickyMetrics);
 
 initializeWorkspace();
+initializeThemeControls();
 
 function toggleEditorLoading(isLoading) {
 	isEditorLoading = isLoading;
@@ -114,6 +118,96 @@ function toggleEditorLoading(isLoading) {
 	editorLoading.classList.toggle("hidden", !isLoading);
 	updateEditorActionsState();
 	updateStickyMetrics();
+}
+
+function initializeThemeControls() {
+	applyStoredThemePreference();
+	setupSystemThemeWatcher();
+	if (themeToggleButtons.length === 0) {
+		return;
+	}
+
+	themeToggleButtons.forEach((button) => {
+		button.addEventListener("click", () => {
+			const mode = button.dataset.themeMode;
+			if (!mode) {
+				return;
+			}
+			setThemePreference(mode);
+		});
+	});
+
+	updateThemeToggleState(getThemePreference());
+}
+
+function getThemePreference() {
+	return localStorage.getItem(THEME_STORAGE_KEY) || "system";
+}
+
+function setThemePreference(mode) {
+	const normalized = mode === "light" || mode === "dark" ? mode : "system";
+	localStorage.setItem(THEME_STORAGE_KEY, normalized);
+	applyTheme(normalized);
+	updateThemeToggleState(normalized);
+}
+
+function applyStoredThemePreference() {
+	const preference = getThemePreference();
+	applyTheme(preference);
+}
+
+function applyTheme(mode) {
+	rootElement.setAttribute("data-theme", mode);
+	if (mode === "dark") {
+		rootElement.classList.add("theme-dark");
+		rootElement.classList.remove("theme-light");
+		rootStyle.setProperty("color-scheme", "dark");
+	} else if (mode === "light") {
+		rootElement.classList.add("theme-light");
+		rootElement.classList.remove("theme-dark");
+		rootStyle.setProperty("color-scheme", "light");
+	} else {
+		rootElement.classList.remove("theme-light", "theme-dark");
+		const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+		rootElement.classList.toggle("theme-dark", prefersDark);
+		rootElement.classList.toggle("theme-light", !prefersDark);
+		rootStyle.setProperty("color-scheme", prefersDark ? "dark" : "light");
+	}
+}
+
+function updateThemeToggleState(activeMode) {
+	if (themeToggleButtons.length === 0) {
+		return;
+	}
+
+	themeToggleButtons.forEach((button) => {
+		const mode = button.dataset.themeMode;
+		if (!mode) {
+			return;
+		}
+		const isActive = mode === activeMode;
+		button.classList.toggle("active", isActive);
+		button.setAttribute("aria-pressed", isActive ? "true" : "false");
+	});
+}
+
+function setupSystemThemeWatcher() {
+	if (!window.matchMedia) {
+		return;
+	}
+	const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+	const handler = () => {
+		if (getThemePreference() !== "system") {
+			return;
+		}
+		applyTheme("system");
+		updateThemeToggleState("system");
+	};
+	if (typeof mediaQuery.addEventListener === "function") {
+		mediaQuery.addEventListener("change", handler);
+	} else if (typeof mediaQuery.addListener === "function") {
+		mediaQuery.addListener(handler);
+	}
 }
 
 function handleConfigFileSelection(event) {
