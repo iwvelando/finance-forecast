@@ -31,6 +31,22 @@
                 </div>
                 <div id="warnings" class="warnings hidden" aria-live="polite"></div>
                 <div id="scenario-tabs" class="scenario-tabs hidden" role="tablist" aria-label="Scenario results"></div>
+                <div id="results-chart-wrapper" class="chart-panel hidden">
+                    <div class="chart-header">
+                        <h3 id="results-chart-title" class="chart-title">Net Worth Over Time</h3>
+                        <div id="results-chart-legend" class="chart-legend" role="list"></div>
+                    </div>
+                    <svg
+                        id="results-chart"
+                        class="chart"
+                        role="img"
+                        aria-labelledby="results-chart-title"
+                        aria-describedby="results-chart-caption"
+                        focusable="false"
+                    ></svg>
+                    <p id="results-chart-empty" class="chart-empty muted-text hidden">No chart data available for this scenario.</p>
+                    <p id="results-chart-caption" class="visually-hidden">Line chart showing liquid and total net worth over time for the selected scenario.</p>
+                </div>
                 <div class="table-container">
                     <table id="results-table">
                         <thead></thead>

@@ -7,6 +7,12 @@ const tableBody = document.querySelector("#results-table tbody");
 const downloadLink = document.getElementById("download-link");
 const durationEl = document.getElementById("duration");
 const scenarioTabsEl = document.getElementById("scenario-tabs");
+const chartWrapper = document.getElementById("results-chart-wrapper");
+const chartSvg = document.getElementById("results-chart");
+const chartLegendEl = document.getElementById("results-chart-legend");
+const chartEmptyEl = document.getElementById("results-chart-empty");
+const chartTitleEl = document.getElementById("results-chart-title");
+const chartCaptionEl = document.getElementById("results-chart-caption");
 const configEditorRoot = document.getElementById("config-editor");
 const uploadConfigInput = document.getElementById("upload-config-input");
 const uploadConfigButton = document.getElementById("upload-config-button");
@@ -54,12 +60,27 @@ let latestForecastResponse = null;
 let editorPersistTimer = null;
 let editorStorageAvailable = null;
 let editorPersistenceHandlersRegistered = false;
+let chartResizeFrame = null;
 const THEME_STORAGE_KEY = "financeForecast.theme";
 const EDITOR_STORAGE_KEY = "financeForecast.editorState.v1";
 const EDITOR_STORAGE_VERSION = 1;
 const EDITOR_PERSIST_DEBOUNCE_MS = 600;
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const SVG_NS = "http://www.w3.org/2000/svg";
+const CHART_MARGIN = {
+	top: 44,
+	right: 36,
+	bottom: 90,
+	left: 96,
+};
+const CHART_MIN_HEIGHT = 220;
+const CHART_MAX_HEIGHT = 360;
+const CHART_ASPECT_RATIO = 0.55;
+const CHART_SERIES = [
+	{ key: "liquid", label: "Liquid Net Worth", lineClass: "chart-line--liquid", pointClass: "chart-point--liquid", swatchClass: "chart-legend-swatch--liquid" },
+	{ key: "total", label: "Total Net Worth", lineClass: "chart-line--total", pointClass: "chart-point--total", swatchClass: "chart-legend-swatch--total" },
+];
 
 function getCurrentMonthValue() {
 	const now = new Date();
@@ -116,6 +137,7 @@ const updateStickyMetrics = () => {
 updateStickyMetrics();
 window.addEventListener("resize", updateStickyMetrics);
 window.addEventListener("load", updateStickyMetrics);
+window.addEventListener("resize", handleChartResize);
 
 initializeWorkspace();
 initializeThemeControls();
@@ -523,6 +545,30 @@ function clearResultsView() {
 	latestCsvContent = "";
 	latestCsvFilename = "";
 
+	if (chartWrapper) {
+		chartWrapper.classList.add("hidden");
+	}
+	if (chartLegendEl) {
+		chartLegendEl.innerHTML = "";
+		chartLegendEl.classList.add("hidden");
+	}
+	if (chartSvg) {
+		while (chartSvg.firstChild) {
+			chartSvg.removeChild(chartSvg.firstChild);
+		}
+		chartSvg.classList.add("hidden");
+	}
+	if (chartEmptyEl) {
+		chartEmptyEl.classList.add("hidden");
+	}
+	if (chartCaptionEl) {
+		chartCaptionEl.textContent = "Line chart showing liquid and total net worth over time for the selected scenario.";
+	}
+	if (chartResizeFrame !== null) {
+		window.cancelAnimationFrame(chartResizeFrame);
+		chartResizeFrame = null;
+	}
+
 	if (currentObjectUrl) {
 		URL.revokeObjectURL(currentObjectUrl);
 		currentObjectUrl = null;
@@ -561,6 +607,7 @@ function renderWarnings(warnings) {
 
 function renderActiveScenario() {
 	renderScenarioTabs();
+	renderScenarioChart();
 	renderScenarioTable();
 }
 
@@ -617,6 +664,332 @@ function renderScenarioTabs() {
 	});
 
 	scenarioTabsEl.classList.remove("hidden");
+}
+
+function renderScenarioChart() {
+	if (!chartWrapper || !chartSvg || !chartLegendEl) {
+		return;
+	}
+
+	while (chartSvg.firstChild) {
+		chartSvg.removeChild(chartSvg.firstChild);
+	}
+	chartSvg.classList.add("hidden");
+	chartLegendEl.innerHTML = "";
+	chartLegendEl.classList.add("hidden");
+	if (chartEmptyEl) {
+		chartEmptyEl.classList.add("hidden");
+	}
+
+	if (!forecastDataset || !Array.isArray(forecastDataset.scenarios) || forecastDataset.scenarios.length === 0) {
+		if (chartWrapper) {
+			chartWrapper.classList.add("hidden");
+		}
+		return;
+	}
+
+	const scenarioIndex = clampActiveScenarioIndex();
+	const scenarioName = forecastDataset.scenarios[scenarioIndex] || `Scenario ${scenarioIndex + 1}`;
+	const rows = Array.isArray(forecastDataset.rows) ? forecastDataset.rows : [];
+
+	const points = rows
+		.map((row) => {
+			const parsedDate = parseForecastDate(row.date);
+			if (!parsedDate) {
+				return null;
+			}
+			const value = Array.isArray(row.values) ? row.values[scenarioIndex] || null : null;
+			const liquid = getScenarioValue(value, "liquid");
+			const total = getScenarioValue(value, "total");
+			if (liquid === null && total === null) {
+				return null;
+			}
+			return {
+				dateLabel: row.date,
+				date: parsedDate,
+				time: parsedDate.getTime(),
+				liquid,
+				total,
+			};
+		})
+		.filter(Boolean);
+
+	if (chartTitleEl) {
+		chartTitleEl.textContent = `Net Worth Over Time — ${scenarioName}`;
+	}
+	if (chartCaptionEl) {
+		chartCaptionEl.textContent = `Line chart showing liquid and total net worth over time for the selected scenario: ${scenarioName}.`;
+	}
+	chartSvg.setAttribute("aria-label", `Line chart of liquid and total net worth for ${scenarioName}.`);
+
+	buildChartLegend(points);
+
+	if (points.length === 0) {
+		chartWrapper.classList.remove("hidden");
+		chartLegendEl.classList.remove("hidden");
+		if (chartEmptyEl) {
+			chartEmptyEl.classList.remove("hidden");
+		}
+		updateStickyMetrics();
+		return;
+	}
+
+	const sortedPoints = points.slice().sort((a, b) => a.time - b.time);
+	const containerWidth = Math.max(chartWrapper.clientWidth || 0, 480);
+	const width = containerWidth;
+	const height = Math.max(
+		CHART_MIN_HEIGHT,
+		Math.min(CHART_MAX_HEIGHT, Math.round(containerWidth * CHART_ASPECT_RATIO)),
+	);
+
+	chartSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+	chartSvg.setAttribute("width", width);
+	chartSvg.setAttribute("height", height);
+	chartSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+	chartSvg.classList.remove("hidden");
+	chartWrapper.classList.remove("hidden");
+	chartLegendEl.classList.remove("hidden");
+	if (chartEmptyEl) {
+		chartEmptyEl.classList.add("hidden");
+	}
+
+	const existingDesc = chartSvg.querySelector("desc");
+	if (existingDesc) {
+		chartSvg.removeChild(existingDesc);
+	}
+	const descEl = createSvgElement("desc");
+	descEl.textContent = `Liquid and total net worth for ${scenarioName} from ${sortedPoints[0].dateLabel} to ${sortedPoints[sortedPoints.length - 1].dateLabel}.`;
+	chartSvg.insertBefore(descEl, chartSvg.firstChild);
+
+	const xValues = sortedPoints.map((point) => point.time);
+	const yValues = [];
+	sortedPoints.forEach((point) => {
+		if (typeof point.liquid === "number" && Number.isFinite(point.liquid)) {
+			yValues.push(point.liquid);
+		}
+		if (typeof point.total === "number" && Number.isFinite(point.total)) {
+			yValues.push(point.total);
+		}
+	});
+
+	if (yValues.length > 0) {
+		const min = Math.min(...yValues);
+		const max = Math.max(...yValues);
+		if (min > 0) {
+			yValues.push(0);
+		}
+		if (max < 0) {
+			yValues.push(0);
+		}
+	} else {
+		yValues.push(0);
+	}
+
+	let xMin = Math.min(...xValues);
+	let xMax = Math.max(...xValues);
+	if (!Number.isFinite(xMin) || !Number.isFinite(xMax)) {
+		xMin = Date.now();
+		xMax = xMin + 1;
+	}
+	if (xMin === xMax) {
+		const halfWindow = 1000 * 60 * 60 * 24 * 15;
+		xMin -= halfWindow;
+		xMax += halfWindow;
+	}
+
+	let yMin = Math.min(...yValues);
+	let yMax = Math.max(...yValues);
+	if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+		yMin = 0;
+		yMax = 1;
+	}
+	if (yMin === yMax) {
+		const pad = Math.max(Math.abs(yMin) * 0.15, 1000);
+		yMin -= pad;
+		yMax += pad;
+	} else {
+		const pad = (yMax - yMin) * 0.08;
+		yMin -= pad;
+		yMax += pad;
+	}
+
+	const plotLeftX = CHART_MARGIN.left;
+	const plotRightX = width - CHART_MARGIN.right;
+	const plotTopY = CHART_MARGIN.top;
+	const plotBottomY = height - CHART_MARGIN.bottom;
+	const plotWidth = Math.max(0, plotRightX - plotLeftX);
+	const plotHeight = Math.max(0, plotBottomY - plotTopY);
+
+	const xScale = createLinearScale(xMin, xMax, plotLeftX, plotRightX);
+	const yScale = createLinearScale(yMin, yMax, plotBottomY, plotTopY);
+
+	const bandsGroup = createSvgElement("g", { class: "chart-bands" });
+	const gridGroup = createSvgElement("g", { class: "chart-grid" });
+	const axesGroup = createSvgElement("g", { class: "chart-axes" });
+	const linesGroup = createSvgElement("g", { class: "chart-lines" });
+	const pointsGroup = createSvgElement("g", { class: "chart-points" });
+	chartSvg.appendChild(bandsGroup);
+	chartSvg.appendChild(gridGroup);
+	chartSvg.appendChild(linesGroup);
+	chartSvg.appendChild(pointsGroup);
+	chartSvg.appendChild(axesGroup);
+
+	const currencyFormatter = new Intl.NumberFormat(undefined, {
+		style: "currency",
+		currency: "USD",
+		maximumFractionDigits: 0,
+		notation: "compact",
+		compactDisplay: "short",
+	});
+	const dateFormatter = new Intl.DateTimeFormat(undefined, {
+		month: "short",
+		year: "numeric",
+	});
+
+	const zeroY = yMin <= 0 && yMax >= 0 ? yScale(0) : null;
+	if (yMin < 0 && Number.isFinite(zeroY) && plotHeight > 0) {
+		const bandY = Math.min(zeroY, plotBottomY);
+		const bandHeight = Math.abs(plotBottomY - zeroY);
+		if (bandHeight > 0.5) {
+			const negativeBand = createSvgElement("rect", {
+				class: "chart-negative-band",
+				x: plotLeftX,
+				y: bandY,
+				width: plotWidth,
+				height: bandHeight,
+			});
+			bandsGroup.appendChild(negativeBand);
+		}
+	}
+
+	const yTicks = generateLinearTicks(yMin, yMax, 5);
+	yTicks.forEach((tick) => {
+		if (!Number.isFinite(tick)) {
+			return;
+		}
+		const y = yScale(tick);
+		if (!Number.isFinite(y)) {
+			return;
+		}
+		if (y < plotTopY - 0.5 || y > plotBottomY + 0.5) {
+			return;
+		}
+		const gridLine = createSvgElement("line", {
+			class: "chart-grid-line",
+			x1: plotLeftX,
+			x2: plotRightX,
+			y1: y,
+			y2: y,
+		});
+		gridGroup.appendChild(gridLine);
+
+		const label = createSvgElement("text", {
+			class: "chart-axis-label",
+			x: plotLeftX - 18,
+			y,
+			"text-anchor": "end",
+			"dominant-baseline": "middle",
+		});
+		label.textContent = currencyFormatter.format(tick);
+		axesGroup.appendChild(label);
+	});
+
+	const xTickCount = Math.max(3, Math.min(8, Math.round(width / 160)));
+	const xTicks = generateTimeTicks(sortedPoints, xTickCount);
+	xTicks.forEach((tickPoint) => {
+		const x = xScale(tickPoint.time);
+		if (!Number.isFinite(x)) {
+			return;
+		}
+		if (x > plotLeftX + 0.5 && x < plotRightX - 0.5) {
+			const verticalLine = createSvgElement("line", {
+				class: "chart-grid-line",
+				x1: x,
+				x2: x,
+				y1: plotTopY,
+				y2: plotBottomY,
+			});
+			gridGroup.appendChild(verticalLine);
+		}
+		const label = createSvgElement("text", {
+			class: "chart-axis-tick",
+			x,
+			y: plotBottomY + 16,
+			"text-anchor": "middle",
+		});
+		label.textContent = dateFormatter.format(tickPoint.date);
+		axesGroup.appendChild(label);
+	});
+
+	const yAxisLine = createSvgElement("line", {
+		class: "chart-axis",
+		x1: plotLeftX,
+		x2: plotLeftX,
+		y1: plotTopY,
+		y2: plotBottomY,
+	});
+	const xAxisLine = createSvgElement("line", {
+		class: "chart-axis",
+		x1: plotLeftX,
+		x2: plotRightX,
+		y1: plotBottomY,
+		y2: plotBottomY,
+	});
+	axesGroup.appendChild(yAxisLine);
+	axesGroup.appendChild(xAxisLine);
+
+	if (Number.isFinite(zeroY)) {
+		const zeroLine = createSvgElement("line", {
+			class: "chart-reference-line",
+			x1: plotLeftX,
+			x2: plotRightX,
+			y1: zeroY,
+			y2: zeroY,
+		});
+		gridGroup.appendChild(zeroLine);
+	}
+	const yAxisLabel = createSvgElement("text", {
+		class: "chart-axis-label chart-axis-label-y",
+		x: plotLeftX - 58,
+		y: (plotTopY + plotBottomY) / 2,
+	});
+	yAxisLabel.textContent = "Net Worth (USD)";
+	axesGroup.appendChild(yAxisLabel);
+
+	const xAxisLabel = createSvgElement("text", {
+		class: "chart-axis-label chart-axis-label-x",
+		x: (plotLeftX + plotRightX) / 2,
+		y: plotBottomY + 44,
+	});
+	xAxisLabel.textContent = "Time";
+	axesGroup.appendChild(xAxisLabel);
+
+	CHART_SERIES.forEach((series) => {
+		const linePath = buildLinePath(sortedPoints, (point) => point[series.key], xScale, yScale);
+		if (!linePath) {
+			return;
+		}
+		const pathElement = createSvgElement("path", {
+			class: `chart-line ${series.lineClass}`,
+			d: linePath,
+		});
+		linesGroup.appendChild(pathElement);
+
+		const seriesPoints = sortedPoints.filter((point) => typeof point[series.key] === "number" && Number.isFinite(point[series.key]));
+		if (seriesPoints.length === 0) {
+			return;
+		}
+		const lastPoint = seriesPoints[seriesPoints.length - 1];
+		const circle = createSvgElement("circle", {
+			class: `chart-point ${series.pointClass}`,
+			cx: xScale(lastPoint.time),
+			cy: yScale(lastPoint[series.key]),
+			r: 4,
+		});
+		pointsGroup.appendChild(circle);
+	});
+
+	updateStickyMetrics();
 }
 
 function renderScenarioTable() {
@@ -681,6 +1054,212 @@ function renderScenarioTable() {
 		tableBody.appendChild(tr);
 	});
 }
+
+	function buildChartLegend(points) {
+		if (!chartLegendEl) {
+			return;
+		}
+
+		chartLegendEl.innerHTML = "";
+		const entries = Array.isArray(points) ? points : [];
+		const hasAnyEntries = entries.length > 0;
+
+		CHART_SERIES.forEach((series) => {
+			const hasValues = hasAnyEntries
+				? entries.some((point) => typeof point[series.key] === "number" && Number.isFinite(point[series.key]))
+				: false;
+			const item = document.createElement("span");
+			item.className = "chart-legend-item";
+			item.setAttribute("role", "listitem");
+			if (!hasValues) {
+				item.classList.add("chart-legend-item--muted");
+				item.setAttribute("aria-disabled", "true");
+			}
+			const swatch = document.createElement("span");
+			swatch.className = `chart-legend-swatch ${series.swatchClass}`;
+			item.appendChild(swatch);
+			const label = document.createElement("span");
+			label.textContent = series.label;
+			item.appendChild(label);
+			chartLegendEl.appendChild(item);
+		});
+
+		if (chartLegendEl.children.length === 0) {
+			chartLegendEl.classList.add("hidden");
+		} else {
+			chartLegendEl.classList.remove("hidden");
+		}
+	}
+
+	function getScenarioValue(value, key) {
+		if (!value || typeof value !== "object") {
+			return null;
+		}
+		const candidate = value[key];
+		if (typeof candidate === "number" && Number.isFinite(candidate)) {
+			return candidate;
+		}
+		if (typeof value.amount === "number" && Number.isFinite(value.amount)) {
+			return value.amount;
+		}
+		return null;
+	}
+
+	function parseForecastDate(raw) {
+		if (typeof raw !== "string" || raw.trim() === "") {
+			return null;
+		}
+		const normalized = raw.trim();
+		if (MONTH_PATTERN.test(normalized)) {
+			const [yearStr, monthStr] = normalized.split("-");
+			const year = Number(yearStr);
+			const month = Number(monthStr) - 1;
+			if (Number.isFinite(year) && Number.isFinite(month)) {
+				return new Date(year, month, 1);
+			}
+		}
+		const parsed = Date.parse(normalized);
+		if (!Number.isNaN(parsed)) {
+			return new Date(parsed);
+		}
+		return null;
+	}
+
+	function createSvgElement(tag, attributes = {}) {
+		const element = document.createElementNS(SVG_NS, tag);
+		Object.entries(attributes).forEach(([name, value]) => {
+			if (value === null || typeof value === "undefined" || (typeof value === "number" && Number.isNaN(value))) {
+				return;
+			}
+			element.setAttribute(name, String(value));
+		});
+		return element;
+	}
+
+	function createLinearScale(domainMin, domainMax, rangeMin, rangeMax) {
+		if (!Number.isFinite(domainMin) || !Number.isFinite(domainMax) || domainMin === domainMax) {
+			const center = (rangeMin + rangeMax) / 2;
+			return () => center;
+		}
+		const domainSpan = domainMax - domainMin;
+		const rangeSpan = rangeMax - rangeMin;
+		return (value) => {
+			if (!Number.isFinite(value)) {
+				return NaN;
+			}
+			const ratio = (value - domainMin) / domainSpan;
+			return rangeMin + ratio * rangeSpan;
+		};
+	}
+
+	function buildLinePath(points, accessor, xScale, yScale) {
+		let path = "";
+		let segmentOpen = false;
+		points.forEach((point) => {
+			const value = accessor(point);
+			if (typeof value !== "number" || !Number.isFinite(value)) {
+				segmentOpen = false;
+				return;
+			}
+			const x = xScale(point.time);
+			const y = yScale(value);
+			if (!Number.isFinite(x) || !Number.isFinite(y)) {
+				segmentOpen = false;
+				return;
+			}
+			if (!segmentOpen) {
+				path += `M${x} ${y}`;
+				segmentOpen = true;
+			} else {
+				path += ` L${x} ${y}`;
+			}
+		});
+		return path.length > 0 ? path : null;
+	}
+
+	function generateLinearTicks(min, max, count = 5) {
+		if (!Number.isFinite(min) || !Number.isFinite(max)) {
+			return [];
+		}
+		if (min === max) {
+			return [min];
+		}
+		const span = max - min;
+		const step = niceNumber(span / Math.max(1, count - 1), true);
+		const niceMin = Math.floor(min / step) * step;
+		const niceMax = Math.ceil(max / step) * step;
+		const ticks = [];
+		for (let tick = niceMin; tick <= niceMax + step * 0.5; tick += step) {
+			ticks.push(Number(tick.toFixed(10)));
+		}
+		return ticks;
+	}
+
+	function niceNumber(value, round) {
+		if (!Number.isFinite(value) || value === 0) {
+			return 1;
+		}
+		const exponent = Math.floor(Math.log10(Math.abs(value)));
+		const fraction = Math.abs(value) / 10 ** exponent;
+		let niceFraction;
+
+		if (round) {
+			if (fraction < 1.5) {
+				niceFraction = 1;
+			} else if (fraction < 3) {
+				niceFraction = 2;
+			} else if (fraction < 7) {
+				niceFraction = 5;
+			} else {
+				niceFraction = 10;
+			}
+		} else if (fraction <= 1) {
+			niceFraction = 1;
+		} else if (fraction <= 2) {
+			niceFraction = 2;
+		} else if (fraction <= 5) {
+			niceFraction = 5;
+		} else {
+			niceFraction = 10;
+		}
+
+		return niceFraction * 10 ** exponent;
+	}
+
+	function generateTimeTicks(points, desiredCount) {
+		if (!Array.isArray(points) || points.length === 0) {
+			return [];
+		}
+		if (points.length <= desiredCount) {
+			return points;
+		}
+		const step = Math.max(1, Math.ceil(points.length / desiredCount));
+		const ticks = [];
+		for (let index = 0; index < points.length; index += step) {
+			ticks.push(points[index]);
+		}
+		const lastPoint = points[points.length - 1];
+		if (ticks[ticks.length - 1]?.time !== lastPoint.time) {
+			ticks.push(lastPoint);
+		}
+		return ticks;
+	}
+
+	function handleChartResize() {
+		if (!forecastDataset || !chartWrapper || !chartSvg) {
+			return;
+		}
+		if (resultsPanel && resultsPanel.hidden) {
+			return;
+		}
+		if (chartResizeFrame !== null) {
+			return;
+		}
+		chartResizeFrame = window.requestAnimationFrame(() => {
+			chartResizeFrame = null;
+			renderScenarioChart();
+		});
+	}
 
 function prepareDownload(csvContent) {
 	if (!downloadLink) {
@@ -2391,6 +2970,10 @@ function switchTab(tabName) {
 	});
 
 	updateStickyMetrics();
+
+		if (tabName === "results" && forecastDataset) {
+			renderScenarioChart();
+		}
 }
 
 async function handleRunForecast() {

@@ -6,11 +6,25 @@
     line-height: 1.5;
     --workspace-sticky-offset: 0px;
     --config-toolbar-offset: 0px;
+    --chart-color-liquid: #2563eb;
+    --chart-color-total: #16a34a;
+    --chart-axis-stroke: rgba(27, 31, 59, 0.28);
+    --chart-grid-stroke: rgba(27, 31, 59, 0.12);
+    --chart-background: rgba(255, 255, 255, 0.9);
+    --chart-label-color: rgba(27, 31, 59, 0.7);
+    --chart-negative-band: rgba(220, 38, 38, 0.08);
 }
 
 .theme-dark {
     background-color: #0f172a;
     color: #e2e8f0;
+    --chart-color-liquid: #60a5fa;
+    --chart-color-total: #34d399;
+    --chart-axis-stroke: rgba(203, 213, 225, 0.45);
+    --chart-grid-stroke: rgba(148, 163, 184, 0.22);
+    --chart-background: rgba(30, 41, 59, 0.88);
+    --chart-label-color: rgba(226, 232, 240, 0.72);
+    --chart-negative-band: rgba(248, 113, 113, 0.18);
 }
 
 body {
@@ -328,6 +342,81 @@ button:disabled {
     color: #eff6ff;
     box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.45);
 }
+
+.chart-panel {
+    margin-bottom: 1.5rem;
+    padding: 1.25rem 1.5rem 1.75rem;
+    border-radius: 16px;
+    border: 1px solid rgba(27, 31, 59, 0.08);
+    background: var(--chart-background);
+    box-shadow: 0 12px 32px -22px rgba(15, 23, 42, 0.4);
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-dark .chart-panel {
+    border-color: rgba(148, 163, 184, 0.2);
+    box-shadow: 0 16px 36px -28px rgba(15, 23, 42, 0.65);
+}
+
+.chart-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.chart-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.chart-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    color: var(--chart-label-color);
+}
+
+.chart-legend-item--muted {
+    opacity: 0.55;
+}
+
+.chart-legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+}
+
+.chart-legend-swatch--liquid {
+    background: var(--chart-color-liquid);
+}
+
+.chart-legend-swatch--total {
+    background: var(--chart-color-total);
+}
+
+.chart {
+    display: block;
+    width: 100%;
+    height: 320px;
+}
+
+.chart-empty {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+}
+
 .table-container {
     overflow-x: auto;
     border-radius: 12px;
@@ -396,6 +485,80 @@ button:disabled {
     padding-left: 1.25rem;
     color: rgba(27, 31, 59, 0.7);
     font-size: 0.9rem;
+}
+
+.chart-axis {
+    stroke: var(--chart-axis-stroke);
+    stroke-width: 1.2;
+}
+
+.chart-grid-line {
+    stroke: var(--chart-grid-stroke);
+    stroke-width: 1;
+}
+
+.chart-axis-label,
+.chart-axis-tick {
+    fill: var(--chart-label-color);
+    font-size: 0.8rem;
+    font-weight: 500;
+    dominant-baseline: middle;
+}
+
+.chart-axis-tick {
+    dominant-baseline: hanging;
+}
+
+.chart-axis-label-y {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    text-anchor: middle;
+}
+
+.chart-axis-label-x {
+    text-anchor: middle;
+}
+
+.chart-line {
+    fill: none;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.chart-line--liquid {
+    stroke: var(--chart-color-liquid);
+}
+
+.chart-line--total {
+    stroke: var(--chart-color-total);
+}
+
+.chart-point {
+    stroke-width: 1.4;
+    stroke: var(--chart-background);
+}
+
+.chart-point--liquid {
+    fill: var(--chart-color-liquid);
+}
+
+.chart-point--total {
+    fill: var(--chart-color-total);
+}
+
+.chart-negative-band {
+    fill: var(--chart-negative-band);
+    stroke: none;
+}
+
+.chart-reference-line {
+    stroke: rgba(27, 31, 59, 0.18);
+    stroke-dasharray: 4 4;
+}
+
+.theme-dark .chart-reference-line {
+    stroke: rgba(203, 213, 225, 0.35);
 }
 
 .theme-dark .note-list {
