@@ -1190,16 +1190,6 @@ button:disabled {
     color: #eff6ff;
 }
 
-.editor-inline-actions__button--secondary:hover:not(:disabled) {
-    background: rgba(37, 99, 235, 0.22);
-    color: #0b2c66;
-}
-
-.theme-dark .editor-inline-actions__button--secondary:hover:not(:disabled) {
-    background: rgba(96, 165, 250, 0.28);
-    color: #eff6ff;
-}
-
 .editor-inline-actions__button--danger {
     background: rgba(244, 67, 54, 0.12);
     color: #a02620;
