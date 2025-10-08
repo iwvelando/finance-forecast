@@ -360,6 +360,7 @@ button:disabled {
 }
 
 .chart-panel {
+    position: relative;
     margin-bottom: 1.5rem;
     padding: 1.25rem 1.5rem 1.75rem;
     border-radius: 16px;
@@ -372,6 +373,89 @@ button:disabled {
 .theme-dark .chart-panel {
     border-color: rgba(148, 163, 184, 0.2);
     box-shadow: 0 16px 36px -28px rgba(15, 23, 42, 0.65);
+}
+
+.chart-tooltip {
+    position: absolute;
+    z-index: 5;
+    min-width: 180px;
+    max-width: 220px;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(27, 31, 59, 0.12);
+    box-shadow: 0 12px 24px -18px rgba(15, 23, 42, 0.55);
+    color: #1b1f3b;
+    pointer-events: none;
+    backdrop-filter: blur(6px);
+    will-change: transform;
+}
+
+.theme-dark .chart-tooltip {
+    background: rgba(15, 23, 42, 0.92);
+    border-color: rgba(148, 163, 184, 0.35);
+    box-shadow: 0 16px 30px -22px rgba(15, 23, 42, 0.85);
+    color: #f8fafc;
+}
+
+.chart-tooltip__date {
+    font-size: 0.92rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.chart-tooltip__metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.chart-tooltip__row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.86rem;
+}
+
+.chart-tooltip__label {
+    color: rgba(27, 31, 59, 0.7);
+}
+
+.theme-dark .chart-tooltip__label {
+    color: rgba(226, 232, 240, 0.8);
+}
+
+.chart-tooltip__value {
+    margin-left: auto;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.chart-tooltip__swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+}
+
+.chart-pointer-line {
+    stroke: rgba(37, 99, 235, 0.45);
+    stroke-width: 1;
+    stroke-dasharray: 4;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    pointer-events: none;
+}
+
+.theme-dark .chart-pointer-line {
+    stroke: rgba(165, 180, 252, 0.55);
+}
+
+.chart-pointer-line.chart-pointer-line--active {
+    opacity: 1;
+}
+
+.chart-overlay {
+    cursor: crosshair;
 }
 
 .chart-header {

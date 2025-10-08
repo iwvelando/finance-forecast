@@ -14,6 +14,10 @@ const chartEmptyEl = document.getElementById("results-chart-empty");
 const chartTitleEl = document.getElementById("results-chart-title");
 const chartCaptionEl = document.getElementById("results-chart-caption");
 const resultsSummaryEl = document.getElementById("results-summary");
+const chartTooltipEl = document.getElementById("results-chart-tooltip");
+const chartTooltipDateEl = chartTooltipEl ? chartTooltipEl.querySelector('[data-role="tooltip-date"]') : null;
+const chartTooltipLiquidEl = chartTooltipEl ? chartTooltipEl.querySelector('[data-role="tooltip-liquid"]') : null;
+const chartTooltipTotalEl = chartTooltipEl ? chartTooltipEl.querySelector('[data-role="tooltip-total"]') : null;
 const configEditorRoot = document.getElementById("config-editor");
 const uploadConfigInput = document.getElementById("upload-config-input");
 const uploadConfigButton = document.getElementById("upload-config-button");
@@ -87,6 +91,16 @@ const SUMMARY_CURRENCY_FORMATTER = new Intl.NumberFormat(undefined, {
 	currency: "USD",
 	minimumFractionDigits: 2,
 	maximumFractionDigits: 2,
+});
+const CHART_TOOLTIP_CURRENCY_FORMATTER = new Intl.NumberFormat(undefined, {
+	style: "currency",
+	currency: "USD",
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
+const CHART_TOOLTIP_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	month: "long",
+	year: "numeric",
 });
 
 function getCurrentMonthValue() {
@@ -730,6 +744,11 @@ function renderScenarioChart() {
 		return;
 	}
 
+	if (chartTooltipEl) {
+		chartTooltipEl.classList.add("hidden");
+		chartTooltipEl.setAttribute("aria-hidden", "true");
+	}
+
 	while (chartSvg.firstChild) {
 		chartSvg.removeChild(chartSvg.firstChild);
 	}
@@ -887,11 +906,13 @@ function renderScenarioChart() {
 	const axesGroup = createSvgElement("g", { class: "chart-axes" });
 	const linesGroup = createSvgElement("g", { class: "chart-lines" });
 	const pointsGroup = createSvgElement("g", { class: "chart-points" });
+	const interactionGroup = createSvgElement("g", { class: "chart-interaction" });
 	chartSvg.appendChild(bandsGroup);
 	chartSvg.appendChild(gridGroup);
 	chartSvg.appendChild(linesGroup);
 	chartSvg.appendChild(pointsGroup);
 	chartSvg.appendChild(axesGroup);
+	chartSvg.appendChild(interactionGroup);
 
 	const currencyFormatter = new Intl.NumberFormat(undefined, {
 		style: "currency",
@@ -1046,6 +1067,19 @@ function renderScenarioChart() {
 			r: 4,
 		});
 		pointsGroup.appendChild(circle);
+	});
+
+	setupChartTooltip({
+		sortedPoints,
+		xScale,
+		plotLeftX,
+		plotRightX,
+		plotTopY,
+		plotBottomY,
+		xMin,
+		xMax,
+		interactionGroup,
+		chartSvg,
 	});
 
 	updateStickyMetrics();
@@ -1303,6 +1337,219 @@ function renderScenarioTable() {
 		}
 		return ticks;
 	}
+
+		function setupChartTooltip({
+			sortedPoints,
+			xScale,
+			plotLeftX,
+			plotRightX,
+			plotTopY,
+			plotBottomY,
+			xMin,
+			xMax,
+			interactionGroup,
+			chartSvg,
+		}) {
+			if (!chartTooltipEl || !chartWrapper || !interactionGroup) {
+				return;
+			}
+			if (!Array.isArray(sortedPoints) || sortedPoints.length === 0) {
+				return;
+			}
+
+			const plotWidth = Math.max(0, plotRightX - plotLeftX);
+			const plotHeight = Math.max(0, plotBottomY - plotTopY);
+			if (plotWidth <= 0 || plotHeight <= 0) {
+				return;
+			}
+
+			const tooltipPoints = sortedPoints
+				.map((point) => {
+					const x = xScale(point.time);
+					if (!Number.isFinite(x)) {
+						return null;
+					}
+					return {
+						data: point,
+						x,
+						time: point.time,
+					};
+				})
+				.filter(Boolean);
+
+			if (tooltipPoints.length === 0) {
+				return;
+			}
+
+			const overlayRect = createSvgElement("rect", {
+				class: "chart-overlay",
+				x: plotLeftX,
+				y: plotTopY,
+				width: plotWidth,
+				height: plotHeight,
+				fill: "transparent",
+				"pointer-events": "all",
+			});
+			const pointerLine = createSvgElement("line", {
+				class: "chart-pointer-line",
+				x1: plotLeftX,
+				x2: plotLeftX,
+				y1: plotTopY,
+				y2: plotBottomY,
+				"pointer-events": "none",
+			});
+
+			interactionGroup.appendChild(overlayRect);
+			interactionGroup.appendChild(pointerLine);
+
+			const hideTooltip = () => {
+				pointerLine.classList.remove("chart-pointer-line--active");
+				chartTooltipEl.classList.add("hidden");
+				chartTooltipEl.setAttribute("aria-hidden", "true");
+				chartTooltipEl.style.left = "-9999px";
+				chartTooltipEl.style.top = "-9999px";
+			};
+
+			const positionTooltip = (clientX, clientY) => {
+				const wrapperRect = chartWrapper.getBoundingClientRect();
+				const tooltipRect = chartTooltipEl.getBoundingClientRect();
+				let left = clientX - wrapperRect.left + 16;
+				let top = clientY - wrapperRect.top - tooltipRect.height - 16;
+				const padding = 8;
+
+				if (left + tooltipRect.width > wrapperRect.width - padding) {
+					left = wrapperRect.width - tooltipRect.width - padding;
+				}
+				if (left < padding) {
+					left = padding;
+				}
+				if (top < padding) {
+					top = clientY - wrapperRect.top + 16;
+				}
+				if (top + tooltipRect.height > wrapperRect.height - padding) {
+					top = wrapperRect.height - tooltipRect.height - padding;
+				}
+
+				chartTooltipEl.style.left = `${left}px`;
+				chartTooltipEl.style.top = `${top}px`;
+			};
+
+			const updateTooltip = (entry, clientX, clientY) => {
+				if (!entry) {
+					return;
+				}
+				pointerLine.setAttribute("x1", entry.x);
+				pointerLine.setAttribute("x2", entry.x);
+				pointerLine.classList.add("chart-pointer-line--active");
+
+				const { data } = entry;
+				if (chartTooltipDateEl) {
+					const formattedDate = data.date instanceof Date && !Number.isNaN(data.date.valueOf())
+						? CHART_TOOLTIP_DATE_FORMATTER.format(data.date)
+						: data.dateLabel || "";
+					chartTooltipDateEl.textContent = formattedDate || "—";
+				}
+				if (chartTooltipLiquidEl) {
+					chartTooltipLiquidEl.textContent = formatTooltipCurrency(data.liquid);
+				}
+				if (chartTooltipTotalEl) {
+					chartTooltipTotalEl.textContent = formatTooltipCurrency(data.total);
+				}
+
+				chartTooltipEl.classList.remove("hidden");
+				chartTooltipEl.setAttribute("aria-hidden", "false");
+				positionTooltip(clientX, clientY);
+			};
+
+			const findNearestEntry = (hoverTime) => {
+				let nearest = null;
+				let nearestDistance = Infinity;
+				for (const entry of tooltipPoints) {
+					const distance = Math.abs(entry.time - hoverTime);
+					if (distance < nearestDistance) {
+						nearestDistance = distance;
+						nearest = entry;
+					}
+				}
+				return nearest;
+			};
+
+			const handleClientPoint = (clientX, clientY) => {
+				const svgPoint = clientPointToSvgCoordinates(chartSvg, clientX, clientY);
+				if (!svgPoint) {
+					hideTooltip();
+					return;
+				}
+				const clampedX = clampValue(svgPoint.x, plotLeftX, plotRightX);
+				const domainSpan = Math.max(1, xMax - xMin);
+				const ratio = domainSpan === 0 ? 0 : (clampedX - plotLeftX) / Math.max(1, plotWidth);
+				const hoverTime = xMin + ratio * (xMax - xMin);
+				const nearest = findNearestEntry(hoverTime);
+				if (!nearest) {
+					hideTooltip();
+					return;
+				}
+				updateTooltip(nearest, clientX, clientY);
+			};
+
+			const handleMouseMove = (event) => {
+				handleClientPoint(event.clientX, event.clientY);
+			};
+
+			const handleTouchMove = (event) => {
+				if (!event.touches || event.touches.length === 0) {
+					hideTooltip();
+					return;
+				}
+				const touch = event.touches[0];
+				event.preventDefault();
+				handleClientPoint(touch.clientX, touch.clientY);
+			};
+
+			overlayRect.addEventListener("mouseenter", handleMouseMove);
+			overlayRect.addEventListener("mousemove", handleMouseMove);
+			overlayRect.addEventListener("mouseleave", hideTooltip);
+			overlayRect.addEventListener("touchstart", handleTouchMove, { passive: false });
+			overlayRect.addEventListener("touchmove", handleTouchMove, { passive: false });
+			overlayRect.addEventListener("touchend", hideTooltip);
+			overlayRect.addEventListener("touchcancel", hideTooltip);
+
+			hideTooltip();
+		}
+
+		function formatTooltipCurrency(value) {
+			if (typeof value !== "number" || !Number.isFinite(value)) {
+				return "—";
+			}
+			return CHART_TOOLTIP_CURRENCY_FORMATTER.format(value);
+		}
+
+		function clampValue(value, min, max) {
+			if (!Number.isFinite(value)) {
+				return value;
+			}
+			if (value < min) {
+				return min;
+			}
+			if (value > max) {
+				return max;
+			}
+			return value;
+		}
+
+		function clientPointToSvgCoordinates(svg, clientX, clientY) {
+			if (!svg || typeof svg.createSVGPoint !== "function") {
+				return null;
+			}
+			const point = svg.createSVGPoint();
+			point.x = clientX;
+			point.y = clientY;
+			const screenCTM = svg.getScreenCTM();
+			if (!screenCTM || typeof screenCTM.inverse !== "function") {
+				return null;
+			}
+			return point.matrixTransform(screenCTM.inverse());
+		}
 
 	function handleChartResize() {
 		if (!forecastDataset || !chartWrapper || !chartSvg) {

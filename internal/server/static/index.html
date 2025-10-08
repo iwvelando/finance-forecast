@@ -45,6 +45,21 @@
                         aria-describedby="results-chart-caption"
                         focusable="false"
                     ></svg>
+                    <div id="results-chart-tooltip" class="chart-tooltip hidden" aria-hidden="true">
+                        <div class="chart-tooltip__date" data-role="tooltip-date"></div>
+                        <div class="chart-tooltip__metrics">
+                            <div class="chart-tooltip__row">
+                                <span class="chart-tooltip__swatch chart-legend-swatch chart-legend-swatch--liquid"></span>
+                                <span class="chart-tooltip__label">Liquid</span>
+                                <span class="chart-tooltip__value" data-role="tooltip-liquid">—</span>
+                            </div>
+                            <div class="chart-tooltip__row">
+                                <span class="chart-tooltip__swatch chart-legend-swatch chart-legend-swatch--total"></span>
+                                <span class="chart-tooltip__label">Total</span>
+                                <span class="chart-tooltip__value" data-role="tooltip-total">—</span>
+                            </div>
+                        </div>
+                    </div>
                     <p id="results-chart-empty" class="chart-empty muted-text hidden">No chart data available for this scenario.</p>
                     <p id="results-chart-caption" class="visually-hidden">Line chart showing liquid and total net worth over time for the selected scenario.</p>
                 </div>
