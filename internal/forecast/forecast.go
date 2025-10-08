@@ -178,14 +178,13 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 			cashDelta += scenarioWithdrawalCash + commonWithdrawalCash
 			cashBalance += cashDelta
 
-			monthlyExpenses := calculateMonthlyExpenses(
-				scenarioChanges,
-				commonChanges,
-				scenarioLoansChanges,
-				commonLoansChanges,
-				scenarioContributionOffset,
-				commonContributionOffset,
-			)
+			monthlyExpenses := calculateMonthlyExpenses(MonthlyExpenseInputs{
+				ScenarioEvents:     scenarioChanges,
+				CommonEvents:       commonChanges,
+				ScenarioLoans:      scenarioLoansChanges,
+				CommonLoans:        commonLoansChanges,
+				OtherContributions: []float64{scenarioContributionOffset, commonContributionOffset},
+			})
 			totalMonthlyExpenses += monthlyExpenses
 			monthsObserved++
 
@@ -340,30 +339,39 @@ func sumIncomeReducingContributions(changes []finance.InvestmentChange) float64 
 func sumWithdrawals(changes []finance.InvestmentChange) float64 {
 	total := 0.0
 	for _, change := range changes {
-		netWithdrawal := change.Withdrawal - change.WithdrawalTax
-		total += netWithdrawal
+		// netCashReceived captures the actual cash that reaches the account after withdrawal taxes.
+		netCashReceived := change.Withdrawal - change.WithdrawalTax
+		total += netCashReceived
 	}
 	return total
 }
 
-func calculateMonthlyExpenses(values ...float64) float64 {
+// MonthlyExpenseInputs holds the inputs for calculateMonthlyExpenses.
+type MonthlyExpenseInputs struct {
+	ScenarioEvents     float64
+	CommonEvents       float64
+	ScenarioLoans      float64
+	CommonLoans        float64
+	OtherContributions []float64 // cash-reducing contributions, already positive
+}
+
+func calculateMonthlyExpenses(inputs MonthlyExpenseInputs) float64 {
 	total := 0.0
-	if len(values) == 0 {
-		return total
+	if inputs.ScenarioEvents < 0 {
+		total += -inputs.ScenarioEvents
 	}
-	if len(values) < 4 {
-		return total
+	if inputs.CommonEvents < 0 {
+		total += -inputs.CommonEvents
 	}
-	// The first four values correspond to scenario events, common events, scenario loans, and common loans
-	for i := 0; i < 4 && i < len(values); i++ {
-		if values[i] < 0 {
-			total += -values[i]
-		}
+	if inputs.ScenarioLoans < 0 {
+		total += -inputs.ScenarioLoans
 	}
-	// Remaining values represent cash-reducing contributions that are already positive
-	for i := 4; i < len(values); i++ {
-		if values[i] > 0 {
-			total += values[i]
+	if inputs.CommonLoans < 0 {
+		total += -inputs.CommonLoans
+	}
+	for _, contribution := range inputs.OtherContributions {
+		if contribution > 0 {
+			total += contribution
 		}
 	}
 	return total

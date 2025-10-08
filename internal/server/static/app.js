@@ -158,7 +158,7 @@ const updateStickyMetrics = () => {
 updateStickyMetrics();
 window.addEventListener("resize", updateStickyMetrics);
 window.addEventListener("load", updateStickyMetrics);
-window.addEventListener("resize", handleChartResize);
+window.addEventListener("resize", scheduleChartRerender);
 
 initializeWorkspace();
 initializeThemeControls();
@@ -521,7 +521,7 @@ async function runForecastFromFile(file) {
 function processForecastResponse(data, successMessage, options = {}) {
 	const { switchToResults = true } = options;
 	const scenarios = Array.isArray(data?.scenarios) ? [...data.scenarios] : [];
-	const rows = Array.isArray(data?.rows) ? data.rows : [];
+	const rows = Array.isArray(data?.rows) ? [...data.rows] : [];
 	const metrics = Array.isArray(data?.metrics) ? data.metrics : [];
 	forecastDataset = { scenarios, rows, metrics };
 	if (scenarios.length === 0) {
@@ -1551,7 +1551,7 @@ function renderScenarioTable() {
 			return point.matrixTransform(screenCTM.inverse());
 		}
 
-	function handleChartResize() {
+	function scheduleChartRerender() {
 		if (!forecastDataset || !chartWrapper || !chartSvg) {
 			return;
 		}

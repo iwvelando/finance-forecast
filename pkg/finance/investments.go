@@ -118,6 +118,11 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 			}
 			states[inv.GetName()] = state
 		}
+		// Fallback: some callers may pass in a state map that hasn't been initialized via InitializeStates.
+		// If the principal balance is still zero (meaning we have no historical context), but the investment has a
+		// non-zero starting value and the current value matches that starting value, assume we're at the first
+		// simulated period and seed the principal balance with the starting value. This preserves principal tracking
+		// for newly observed investments without requiring the caller to reinitialize all states.
 		if state.PrincipalBalance == 0 && inv.GetStartingValue() != 0 && state.CurrentValue == inv.GetStartingValue() {
 			state.PrincipalBalance = inv.GetStartingValue()
 		}
