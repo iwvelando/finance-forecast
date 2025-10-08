@@ -10,6 +10,9 @@ const (
 	// MonthsPerYear is the number of months in a year
 	MonthsPerYear = 12
 
+	// DefaultEmergencyFundMonths is the default duration used for emergency fund recommendations
+	DefaultEmergencyFundMonths = 6.0
+
 	// DecimalPrecision is the precision for currency rounding (2 decimal places)
 	DecimalPrecision = 100
 

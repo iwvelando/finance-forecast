@@ -63,6 +63,46 @@ func TestPrettyFormat(t *testing.T) {
 	}
 }
 
+func TestPrettyFormatEmergencyFundSummary(t *testing.T) {
+	results := []forecast.Forecast{
+		{
+			Name:   "Scenario A",
+			Data:   map[string]float64{"2025-01": 1000},
+			Liquid: map[string]float64{"2025-01": 800},
+			Metrics: forecast.ForecastMetrics{
+				EmergencyFund: &forecast.EmergencyFundRecommendation{
+					TargetMonths:           6,
+					AverageMonthlyExpenses: 1500,
+					TargetAmount:           9000,
+					InitialLiquid:          8000,
+					FundedMonths:           5.3,
+					Shortfall:              1000,
+				},
+			},
+		},
+	}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	PrettyFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	if !strings.Contains(output, "Emergency fund target (6.0 months)") {
+		t.Fatalf("expected emergency fund summary, got %q", output)
+	}
+	if !strings.Contains(output, "Shortfall: $1,000.00") {
+		t.Fatalf("expected shortfall detail in summary")
+	}
+}
+
 func TestPrettyFormatSingleScenario(t *testing.T) {
 	// Test with single scenario
 	results := []forecast.Forecast{

@@ -19,11 +19,17 @@ const DateTimeLayout = constants.DateTimeLayout
 
 // Configuration holds all configuration for finance-forecast.
 type Configuration struct {
-	Common    Common
-	Scenarios []Scenario
-	Logging   LoggingConfig `yaml:"logging,omitempty"`
-	Output    OutputConfig  `yaml:"output,omitempty"`
-	StartDate string        `yaml:"startDate,omitempty"` // Optional simulation start date (YYYY-MM)
+	Common          Common
+	Scenarios       []Scenario
+	Logging         LoggingConfig         `yaml:"logging,omitempty"`
+	Output          OutputConfig          `yaml:"output,omitempty"`
+	Recommendations RecommendationsConfig `yaml:"recommendations,omitempty"`
+	StartDate       string                `yaml:"startDate,omitempty"` // Optional simulation start date (YYYY-MM)
+}
+
+// RecommendationsConfig captures optional recommendation settings.
+type RecommendationsConfig struct {
+	EmergencyFundMonths float64 `yaml:"emergencyFundMonths,omitempty"`
 }
 
 // LoggingConfig holds logging configuration options
@@ -85,6 +91,10 @@ func LoadConfiguration(configPath string) (*Configuration, error) {
 		return nil, fmt.Errorf("unable to decode into struct, %s", err)
 	}
 
+	if !viper.IsSet("recommendations.emergencyFundMonths") {
+		configuration.Recommendations.EmergencyFundMonths = constants.DefaultEmergencyFundMonths
+	}
+
 	return &configuration, nil
 }
 
@@ -105,6 +115,10 @@ func LoadConfigurationFromReader(reader io.Reader) (*Configuration, error) {
 	var configuration Configuration
 	if err := v.Unmarshal(&configuration); err != nil {
 		return nil, fmt.Errorf("unable to decode into struct, %s", err)
+	}
+
+	if !v.IsSet("recommendations.emergencyFundMonths") {
+		configuration.Recommendations.EmergencyFundMonths = constants.DefaultEmergencyFundMonths
 	}
 
 	return &configuration, nil
@@ -286,4 +300,13 @@ func (c *Configuration) ValidateConfiguration() []string {
 	// Use the configprocessor for validation
 	processor := configprocessor.NewProcessor()
 	return processor.ValidateConfiguration(c.Common.DeathDate, commonEvents, scenarios)
+}
+
+// EmergencyFundMonths returns the configured emergency fund duration, falling back to the default when unset.
+func (c Configuration) EmergencyFundMonths() float64 {
+	months := c.Recommendations.EmergencyFundMonths
+	if months < 0 {
+		return constants.DefaultEmergencyFundMonths
+	}
+	return months
 }

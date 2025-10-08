@@ -130,6 +130,11 @@ func (a ConfigInvestmentAdapter) GetTaxRate() float64 {
 	return a.investment.TaxRate
 }
 
+// GetWithdrawalTaxRate returns the tax rate applied to taxable withdrawals
+func (a ConfigInvestmentAdapter) GetWithdrawalTaxRate() float64 {
+	return a.investment.WithdrawalTaxRate
+}
+
 // GetContributionForDate returns the total contribution scheduled for the provided date
 func (a ConfigInvestmentAdapter) GetContributionForDate(date string) float64 {
 	return a.contributionSchedule[date]

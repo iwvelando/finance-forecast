@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
@@ -95,7 +96,18 @@ func main() {
 	addr := flag.String("addr", "", "bind address for the web server (overrides server config)")
 	maxUpload := flag.String("max-upload", "", "maximum upload size (e.g. 256K, 10M) overriding server config")
 	serverConfigPath := flag.String("server-config", constants.DefaultServerConfigFile, "path to server configuration file")
+	emergencyMonthsFlag := flag.String("emergency-months", "", "override emergency fund recommendation duration in months (e.g. 6). Set to 0 to disable recommendations.")
 	flag.Parse()
+
+	var emergencyMonthsOverride *float64
+	if *emergencyMonthsFlag != "" {
+		months, err := strconv.ParseFloat(*emergencyMonthsFlag, 64)
+		if err != nil {
+			fmt.Printf("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"invalid value for --emergency-months\", \"value\": \"%s\", \"error\": \"%v\"}\n", *emergencyMonthsFlag, err)
+			return
+		}
+		emergencyMonthsOverride = &months
+	}
 
 	if *serve {
 		runServer(*addr, *maxUpload, *serverConfigPath, *configLocation, *logLevel)
@@ -107,6 +119,9 @@ func main() {
 	if err != nil {
 		fmt.Printf("{\"op\": \"main\", \"level\": \"fatal\", \"msg\": \"failed to load configuration at %s\", \"error\": \"%v\"}\n", *configLocation, err)
 		return
+	}
+	if emergencyMonthsOverride != nil {
+		conf.Recommendations.EmergencyFundMonths = *emergencyMonthsOverride
 	}
 
 	// Initialize logging based on config and CLI override

@@ -13,6 +13,7 @@ const chartLegendEl = document.getElementById("results-chart-legend");
 const chartEmptyEl = document.getElementById("results-chart-empty");
 const chartTitleEl = document.getElementById("results-chart-title");
 const chartCaptionEl = document.getElementById("results-chart-caption");
+const resultsSummaryEl = document.getElementById("results-summary");
 const configEditorRoot = document.getElementById("config-editor");
 const uploadConfigInput = document.getElementById("upload-config-input");
 const uploadConfigButton = document.getElementById("upload-config-button");
@@ -81,6 +82,12 @@ const CHART_SERIES = [
 	{ key: "liquid", label: "Liquid Net Worth", lineClass: "chart-line--liquid", pointClass: "chart-point--liquid", swatchClass: "chart-legend-swatch--liquid" },
 	{ key: "total", label: "Total Net Worth", lineClass: "chart-line--total", pointClass: "chart-point--total", swatchClass: "chart-legend-swatch--total" },
 ];
+const SUMMARY_CURRENCY_FORMATTER = new Intl.NumberFormat(undefined, {
+	style: "currency",
+	currency: "USD",
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
 
 function getCurrentMonthValue() {
 	const now = new Date();
@@ -501,7 +508,8 @@ function processForecastResponse(data, successMessage, options = {}) {
 	const { switchToResults = true } = options;
 	const scenarios = Array.isArray(data?.scenarios) ? [...data.scenarios] : [];
 	const rows = Array.isArray(data?.rows) ? data.rows : [];
-	forecastDataset = { scenarios, rows };
+	const metrics = Array.isArray(data?.metrics) ? data.metrics : [];
+	forecastDataset = { scenarios, rows, metrics };
 	if (scenarios.length === 0) {
 		activeScenarioIndex = 0;
 	} else if (activeScenarioIndex >= scenarios.length) {
@@ -564,6 +572,10 @@ function clearResultsView() {
 	if (chartCaptionEl) {
 		chartCaptionEl.textContent = "Line chart showing liquid and total net worth over time for the selected scenario.";
 	}
+	if (resultsSummaryEl) {
+		resultsSummaryEl.textContent = "";
+		resultsSummaryEl.classList.add("hidden");
+	}
 	if (chartResizeFrame !== null) {
 		window.cancelAnimationFrame(chartResizeFrame);
 		chartResizeFrame = null;
@@ -607,6 +619,7 @@ function renderWarnings(warnings) {
 
 function renderActiveScenario() {
 	renderScenarioTabs();
+	renderScenarioSummary();
 	renderScenarioChart();
 	renderScenarioTable();
 }
@@ -664,6 +677,52 @@ function renderScenarioTabs() {
 	});
 
 	scenarioTabsEl.classList.remove("hidden");
+}
+
+function renderScenarioSummary() {
+	if (!resultsSummaryEl) {
+		return;
+	}
+
+	resultsSummaryEl.textContent = "";
+	resultsSummaryEl.classList.add("hidden");
+
+	if (!forecastDataset || !Array.isArray(forecastDataset.scenarios) || forecastDataset.scenarios.length === 0) {
+		return;
+	}
+
+	const scenarioIndex = clampActiveScenarioIndex();
+	const metrics = Array.isArray(forecastDataset.metrics) ? forecastDataset.metrics[scenarioIndex] : null;
+	if (!metrics || !metrics.emergencyFund) {
+		return;
+	}
+
+	const ef = metrics.emergencyFund;
+	const parts = [];
+	if (typeof ef.targetMonths === "number") {
+		parts.push(`Emergency fund target (${ef.targetMonths.toFixed(1)} months)`);
+	}
+	if (typeof ef.targetAmount === "number") {
+		parts.push(`Goal: ${SUMMARY_CURRENCY_FORMATTER.format(ef.targetAmount)}`);
+	}
+	if (typeof ef.averageMonthlyExpenses === "number" && ef.averageMonthlyExpenses > 0) {
+		parts.push(`Avg expenses: ${SUMMARY_CURRENCY_FORMATTER.format(ef.averageMonthlyExpenses)}`);
+	}
+	if (typeof ef.fundedMonths === "number" && Number.isFinite(ef.fundedMonths)) {
+		parts.push(`Starting coverage: ${ef.fundedMonths.toFixed(1)} months`);
+	}
+	if (typeof ef.shortfall === "number" && ef.shortfall > 0) {
+		parts.push(`Shortfall: ${SUMMARY_CURRENCY_FORMATTER.format(ef.shortfall)}`);
+	} else if (typeof ef.surplus === "number" && ef.surplus > 0) {
+		parts.push(`Surplus: ${SUMMARY_CURRENCY_FORMATTER.format(ef.surplus)}`);
+	}
+
+	if (parts.length === 0) {
+		return;
+	}
+
+	resultsSummaryEl.textContent = parts.join(" • ");
+	resultsSummaryEl.classList.remove("hidden");
 }
 
 function renderScenarioChart() {
@@ -1409,6 +1468,13 @@ function prepareConfigForEditing(rawConfig) {
 		cloned.output.format = "pretty";
 	}
 
+	if (!cloned.recommendations || typeof cloned.recommendations !== "object") {
+		cloned.recommendations = {};
+	}
+	if (cloned.recommendations.emergencyFundMonths === undefined) {
+		cloned.recommendations.emergencyFundMonths = 6;
+	}
+
 	return {
 		config: cloned,
 		logging: loggingConfig,
@@ -1486,6 +1552,16 @@ function renderConfigEditor() {
 		validation: { type: "month", required: true },
 		maxLength: 7,
 		enableNowShortcut: true,
+	}));
+	simGrid.appendChild(createInputField({
+		label: "Emergency fund target (months)",
+		path: "recommendations.emergencyFundMonths",
+		value: currentConfig.recommendations?.emergencyFundMonths ?? "",
+		inputType: "number",
+		step: "0.1",
+		arrowStep: ARROW_STEP_SMALL,
+		tooltip: "Months of expenses to target for the emergency fund recommendation. Set to 0 to disable.",
+		validation: { type: "number", min: 0, max: 120 },
 	}));
 	simulationSection.body.appendChild(simGrid);
 	configEditorRoot.appendChild(simulationSection.section);
@@ -2020,6 +2096,16 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		step: "0.01",
 		arrowStep: ARROW_STEP_SMALL,
 		tooltip: "Optional tax rate applied to positive monthly gains.",
+		validation: { type: "number", min: 0, max: 100 },
+	}));
+	grid.appendChild(createInputField({
+		label: "Tax rate on withdrawals (%)",
+		path: `${basePath}.withdrawalTaxRate`,
+		value: investment.withdrawalTaxRate ?? "",
+		inputType: "number",
+		step: "0.01",
+		arrowStep: ARROW_STEP_SMALL,
+		tooltip: "Tax rate applied to the growth portion of withdrawals (e.g. gains taxed when funds are distributed).",
 		validation: { type: "number", min: 0, max: 100 },
 	}));
 	grid.appendChild(createCheckboxField({
@@ -2880,6 +2966,7 @@ function createEmptyInvestment() {
 		startingValue: 0,
 		annualReturnRate: 0,
 		taxRate: 0,
+		withdrawalTaxRate: 0,
 		contributions: [],
 		withdrawals: [],
 		contributionsFromCash: false,
@@ -2900,6 +2987,9 @@ function createInitialConfig() {
 	return {
 		startDate: "",
 		output: { format: "pretty" },
+		recommendations: {
+			emergencyFundMonths: 6,
+		},
 		common: {
 			startingValue: "",
 			deathDate: "",

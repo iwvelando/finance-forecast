@@ -54,7 +54,7 @@ func TestDeterministicComponentBaselines(t *testing.T) {
 			name:       "pretax investment",
 			configPath: "../test_pretax_investment_config.yaml",
 			expectations: []scenarioExpectation{
-				{name: "deterministic pretax investment baseline", total: 23889.48, liquid: 9000.00},
+				{name: "deterministic pretax investment baseline", total: 23807.94, liquid: 8918.46},
 			},
 			accumulate: true,
 		},
@@ -78,7 +78,7 @@ func TestDeterministicComponentBaselines(t *testing.T) {
 			name:       "combined",
 			configPath: "../test_combined_config.yaml",
 			expectations: []scenarioExpectation{
-				{name: "deterministic combined baseline", total: 78605.48, liquid: 43940.81},
+				{name: "deterministic combined baseline", total: 78523.94, liquid: 43859.27},
 			},
 			accumulate: false,
 		},

@@ -73,6 +73,9 @@ func TestHandleForecastSuccess(t *testing.T) {
 	if resp.ConfigYAML == "" {
 		t.Fatal("expected config YAML in response")
 	}
+	if len(resp.Metrics) != len(resp.Scenarios) {
+		t.Fatalf("expected metrics for each scenario, got %d entries for %d scenarios", len(resp.Metrics), len(resp.Scenarios))
+	}
 }
 
 func TestHandleForecastEditorSuccess(t *testing.T) {
@@ -111,6 +114,9 @@ func TestHandleForecastEditorSuccess(t *testing.T) {
 	}
 	if resp.ConfigYAML == "" {
 		t.Fatal("expected config YAML in response")
+	}
+	if len(resp.Metrics) != len(resp.Scenarios) {
+		t.Fatalf("expected metrics for each scenario, got %d entries", len(resp.Metrics))
 	}
 }
 

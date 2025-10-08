@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"github.com/iwvelando/finance-forecast/pkg/mathutil"
 	"go.uber.org/zap"
@@ -248,6 +249,38 @@ func TestParseDateListsInvalidStartDate(t *testing.T) {
 	err := config.ParseDateLists()
 	if err == nil {
 		t.Errorf("ParseDateLists() with invalid startDate expected error but got none")
+	}
+}
+
+func TestEmergencyFundMonthsCustom(t *testing.T) {
+	cfg := Configuration{
+		Recommendations: RecommendationsConfig{EmergencyFundMonths: 9},
+	}
+	if got := cfg.EmergencyFundMonths(); got != 9 {
+		t.Fatalf("EmergencyFundMonths() = %.2f, want 9", got)
+	}
+
+	cfg.Recommendations.EmergencyFundMonths = -1
+	if got := cfg.EmergencyFundMonths(); got != constants.DefaultEmergencyFundMonths {
+		t.Fatalf("EmergencyFundMonths() should fall back to default, got %.2f", got)
+	}
+}
+
+func TestEmergencyFundMonthsDefault(t *testing.T) {
+	cfg := Configuration{
+		Recommendations: RecommendationsConfig{EmergencyFundMonths: constants.DefaultEmergencyFundMonths},
+	}
+	if got := cfg.EmergencyFundMonths(); got != constants.DefaultEmergencyFundMonths {
+		t.Fatalf("EmergencyFundMonths() = %.2f, want %.2f", got, constants.DefaultEmergencyFundMonths)
+	}
+}
+
+func TestEmergencyFundMonthsDisable(t *testing.T) {
+	cfg := Configuration{
+		Recommendations: RecommendationsConfig{EmergencyFundMonths: 0},
+	}
+	if got := cfg.EmergencyFundMonths(); got != 0 {
+		t.Fatalf("EmergencyFundMonths() = %.2f, want 0", got)
 	}
 }
 

@@ -2,6 +2,7 @@ package finance
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/iwvelando/finance-forecast/pkg/constants"
@@ -20,6 +21,7 @@ type Investment interface {
 	GetStartingValue() float64
 	GetAnnualReturnRate() float64
 	GetTaxRate() float64
+	GetWithdrawalTaxRate() float64
 	GetContributionForDate(date string) float64
 	GetWithdrawalForDate(date string) float64
 	GetWithdrawalPercentageForDate(date string) float64
@@ -28,7 +30,9 @@ type Investment interface {
 
 // InvestmentState tracks the running value of an investment across simulation months.
 type InvestmentState struct {
-	CurrentValue float64
+	CurrentValue     float64
+	PrincipalBalance float64
+	GrowthBalance    float64
 }
 
 // InvestmentChange captures the computed deltas for a single investment in a given month.
@@ -37,6 +41,9 @@ type InvestmentChange struct {
 	Contribution         float64
 	Withdrawal           float64
 	WithdrawalPercentage float64
+	WithdrawalTax        float64
+	WithdrawalFromGrowth float64
+	WithdrawalFromBasis  float64
 	Growth               float64
 	GrowthBeforeTax      float64
 	Tax                  float64
@@ -64,7 +71,11 @@ func (ip *InvestmentProcessor) InitializeStates(investments []Investment) map[st
 		if inv == nil {
 			continue
 		}
-		states[inv.GetName()] = &InvestmentState{CurrentValue: inv.GetStartingValue()}
+		states[inv.GetName()] = &InvestmentState{
+			CurrentValue:     inv.GetStartingValue(),
+			PrincipalBalance: inv.GetStartingValue(),
+			GrowthBalance:    0,
+		}
 	}
 	return states
 }
@@ -101,8 +112,14 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 
 		state, ok := states[inv.GetName()]
 		if !ok {
-			state = &InvestmentState{CurrentValue: inv.GetStartingValue()}
+			state = &InvestmentState{
+				CurrentValue:     inv.GetStartingValue(),
+				PrincipalBalance: inv.GetStartingValue(),
+			}
 			states[inv.GetName()] = state
+		}
+		if state.PrincipalBalance == 0 && inv.GetStartingValue() != 0 && state.CurrentValue == inv.GetStartingValue() {
+			state.PrincipalBalance = inv.GetStartingValue()
 		}
 
 		previousValue := state.CurrentValue
@@ -110,6 +127,10 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 		contribution := inv.GetContributionForDate(date)
 		if contribution != 0 {
 			state.CurrentValue += contribution
+			state.PrincipalBalance += contribution
+			if state.PrincipalBalance < 0 {
+				state.PrincipalBalance = 0
+			}
 		}
 
 		monthlyRate := percentToDecimal(inv.GetAnnualReturnRate()) / constants.MonthsPerYear
@@ -125,6 +146,15 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 		afterTaxGrowth := growthBeforeTax - tax
 		if afterTaxGrowth != 0 {
 			state.CurrentValue += afterTaxGrowth
+			state.GrowthBalance += afterTaxGrowth
+			if state.GrowthBalance < 0 {
+				deficit := -state.GrowthBalance
+				state.GrowthBalance = 0
+				state.PrincipalBalance -= deficit
+				if state.PrincipalBalance < 0 {
+					state.PrincipalBalance = 0
+				}
+			}
 		}
 
 		withdrawal := inv.GetWithdrawalForDate(date)
@@ -136,8 +166,48 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 		if withdrawal > state.CurrentValue {
 			withdrawal = state.CurrentValue
 		}
+		if withdrawal < 0 {
+			withdrawal = 0
+		}
+
+		withdrawalFromGrowth := 0.0
+		withdrawalFromBasis := 0.0
 		if withdrawal != 0 {
+			availableGrowth := state.GrowthBalance
+			if availableGrowth < 0 {
+				availableGrowth = 0
+			}
+			if availableGrowth > 0 {
+				if availableGrowth >= withdrawal {
+					withdrawalFromGrowth = withdrawal
+				} else {
+					withdrawalFromGrowth = availableGrowth
+				}
+			}
+			withdrawalFromBasis = withdrawal - withdrawalFromGrowth
+
+			state.GrowthBalance -= withdrawalFromGrowth
+			if state.GrowthBalance < 0 {
+				withdrawalFromBasis += -state.GrowthBalance
+				state.GrowthBalance = 0
+			}
+			state.PrincipalBalance -= withdrawalFromBasis
+			if state.PrincipalBalance < 0 {
+				state.PrincipalBalance = 0
+			}
+
 			state.CurrentValue -= withdrawal
+		}
+
+		withdrawalTax := 0.0
+		if withdrawalFromGrowth > 0 {
+			taxRate := inv.GetWithdrawalTaxRate()
+			if taxRate > 0 {
+				withdrawalTax = withdrawalFromGrowth * percentToDecimal(taxRate)
+			}
+		}
+		if withdrawal != 0 {
+			state.CurrentValue = math.Max(state.CurrentValue, 0)
 		}
 
 		netChange := state.CurrentValue - previousValue
@@ -148,6 +218,9 @@ func (ip *InvestmentProcessor) ProcessInvestmentsForDate(date string, investment
 			Contribution:         contribution,
 			Withdrawal:           withdrawal,
 			WithdrawalPercentage: withdrawalPercent,
+			WithdrawalTax:        withdrawalTax,
+			WithdrawalFromGrowth: withdrawalFromGrowth,
+			WithdrawalFromBasis:  withdrawalFromBasis,
 			Growth:               afterTaxGrowth,
 			GrowthBeforeTax:      growthBeforeTax,
 			Tax:                  tax,
