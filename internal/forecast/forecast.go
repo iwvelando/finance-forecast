@@ -4,6 +4,7 @@ package forecast
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -16,10 +17,27 @@ import (
 
 // Forecast holds all information related to a specific forecast.
 type Forecast struct {
-	Name   string
-	Data   map[string]float64
-	Liquid map[string]float64
-	Notes  map[string][]string
+	Name    string
+	Data    map[string]float64
+	Liquid  map[string]float64
+	Notes   map[string][]string
+	Metrics ForecastMetrics
+}
+
+// ForecastMetrics aggregates supplementary scenario insights.
+type ForecastMetrics struct {
+	EmergencyFund *EmergencyFundRecommendation
+}
+
+// EmergencyFundRecommendation summarizes the emergency fund target for a scenario.
+type EmergencyFundRecommendation struct {
+	TargetMonths           float64
+	AverageMonthlyExpenses float64
+	TargetAmount           float64
+	InitialLiquid          float64
+	FundedMonths           float64
+	Shortfall              float64
+	Surplus                float64
 }
 
 // GetForecast processes the Forecasts for all Scenarios.
@@ -46,6 +64,7 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 
 	var results []Forecast
 	startDate := fixedTime.Format(config.DateTimeLayout)
+	emergencyFundMonths := conf.EmergencyFundMonths()
 	for i, scenario := range conf.Scenarios {
 		if !scenario.Active {
 			logger.Debug(fmt.Sprintf("skipping scenario %s because it is inactive", scenario.Name),
@@ -81,6 +100,8 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 		result.Liquid[startDate] = cashBalance
 		result.Data[startDate] = cashBalance + initialInvestmentBalance
 
+		monthsObserved := 0
+		totalMonthlyExpenses := 0.0
 		for {
 			date, err := datetime.OffsetDate(previousDate, config.DateTimeLayout, 1)
 			if err != nil {
@@ -157,6 +178,16 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 			cashDelta += scenarioWithdrawalCash + commonWithdrawalCash
 			cashBalance += cashDelta
 
+			monthlyExpenses := calculateMonthlyExpenses(MonthlyExpenseInputs{
+				ScenarioEvents:     scenarioChanges,
+				CommonEvents:       commonChanges,
+				ScenarioLoans:      scenarioLoansChanges,
+				CommonLoans:        commonLoansChanges,
+				OtherContributions: []float64{scenarioContributionOffset, commonContributionOffset},
+			})
+			totalMonthlyExpenses += monthlyExpenses
+			monthsObserved++
+
 			scenarioInvestmentTotal += scenarioInvestmentChange
 			commonInvestmentTotal += commonInvestmentChange
 			totalInvestments := scenarioInvestmentTotal + commonInvestmentTotal
@@ -167,6 +198,37 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 				break
 			}
 			previousDate = date
+		}
+
+		if emergencyFundMonths > 0 {
+			averageMonthlyExpenses := 0.0
+			if monthsObserved > 0 {
+				averageMonthlyExpenses = totalMonthlyExpenses / float64(monthsObserved)
+			}
+			targetAmount := averageMonthlyExpenses * emergencyFundMonths
+			initialLiquid := result.Liquid[startDate]
+			fundedMonths := 0.0
+			if averageMonthlyExpenses > 0 {
+				fundedMonths = initialLiquid / averageMonthlyExpenses
+			}
+			difference := initialLiquid - targetAmount
+			shortfall := 0.0
+			surplus := 0.0
+			if difference >= 0 {
+				surplus = difference
+			} else {
+				shortfall = math.Abs(difference)
+			}
+
+			result.Metrics.EmergencyFund = &EmergencyFundRecommendation{
+				TargetMonths:           emergencyFundMonths,
+				AverageMonthlyExpenses: averageMonthlyExpenses,
+				TargetAmount:           targetAmount,
+				InitialLiquid:          initialLiquid,
+				FundedMonths:           fundedMonths,
+				Shortfall:              shortfall,
+				Surplus:                surplus,
+			}
 		}
 		results = append(results, result)
 	}
@@ -180,7 +242,10 @@ func initializeInvestmentStates(investments []finance.Investment) map[string]*fi
 		if inv == nil {
 			continue
 		}
-		states[inv.GetName()] = &finance.InvestmentState{CurrentValue: inv.GetStartingValue()}
+		states[inv.GetName()] = &finance.InvestmentState{
+			CurrentValue:     inv.GetStartingValue(),
+			PrincipalBalance: inv.GetStartingValue(),
+		}
 	}
 	return states
 }
@@ -215,6 +280,16 @@ func addInvestmentNotes(notes map[string][]string, date, scope string, changes [
 			if change.WithdrawalPercentage != 0 {
 				note = fmt.Sprintf("withdrawal (%0.2f%%) %+0.2f", change.WithdrawalPercentage, change.Withdrawal)
 			}
+			var breakdown []string
+			if change.WithdrawalFromBasis != 0 {
+				breakdown = append(breakdown, fmt.Sprintf("basis %+.2f", change.WithdrawalFromBasis))
+			}
+			if change.WithdrawalFromGrowth != 0 {
+				breakdown = append(breakdown, fmt.Sprintf("growth %+.2f", change.WithdrawalFromGrowth))
+			}
+			if len(breakdown) > 0 {
+				note = fmt.Sprintf("%s (%s)", note, strings.Join(breakdown, ", "))
+			}
 			parts = append(parts, note)
 		}
 		growthDisplay := change.GrowthBeforeTax
@@ -226,6 +301,9 @@ func addInvestmentNotes(notes map[string][]string, date, scope string, changes [
 		}
 		if change.Tax != 0 {
 			parts = append(parts, fmt.Sprintf("tax %.2f", change.Tax))
+		}
+		if change.WithdrawalTax != 0 {
+			parts = append(parts, fmt.Sprintf("withdrawal tax %.2f", change.WithdrawalTax))
 		}
 
 		if len(parts) == 0 {
@@ -261,7 +339,40 @@ func sumIncomeReducingContributions(changes []finance.InvestmentChange) float64 
 func sumWithdrawals(changes []finance.InvestmentChange) float64 {
 	total := 0.0
 	for _, change := range changes {
-		total += change.Withdrawal
+		// netCashReceived captures the actual cash that reaches the account after withdrawal taxes.
+		netCashReceived := change.Withdrawal - change.WithdrawalTax
+		total += netCashReceived
+	}
+	return total
+}
+
+// MonthlyExpenseInputs holds the inputs for calculateMonthlyExpenses.
+type MonthlyExpenseInputs struct {
+	ScenarioEvents     float64
+	CommonEvents       float64
+	ScenarioLoans      float64
+	CommonLoans        float64
+	OtherContributions []float64 // cash-reducing contributions, already positive
+}
+
+func calculateMonthlyExpenses(inputs MonthlyExpenseInputs) float64 {
+	total := 0.0
+	if inputs.ScenarioEvents < 0 {
+		total += -inputs.ScenarioEvents
+	}
+	if inputs.CommonEvents < 0 {
+		total += -inputs.CommonEvents
+	}
+	if inputs.ScenarioLoans < 0 {
+		total += -inputs.ScenarioLoans
+	}
+	if inputs.CommonLoans < 0 {
+		total += -inputs.CommonLoans
+	}
+	for _, contribution := range inputs.OtherContributions {
+		if contribution > 0 {
+			total += contribution
+		}
 	}
 	return total
 }

@@ -2,7 +2,7 @@
 # Combined configuration that unions the deterministic component baselines
 # Sum of component start values: 1,000 + 20,000 + 7,000 + 6,000 + 8,000 = 42,000
 # Final projection should equal the linear sum of individual baselines.
-# Expected total ≈ 78,605.48 at 2026-01.
+# Expected total ≈ 78,523.94 at 2026-01.
 startDate: 2024-12
 
 common:
@@ -45,6 +45,7 @@ common:
       startingValue: 10000.00
       annualReturnRate: 6.0
       taxRate: 0.0
+      withdrawalTaxRate: 10.0
       contributionsFromCash: false
       contributions:
         - amount: 500.00

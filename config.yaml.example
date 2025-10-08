@@ -17,6 +17,11 @@ logging:
 output:
   format: pretty      # Options: pretty (default) or csv
 
+# Recommendation settings (optional)
+recommendations:
+  # Months of expenses to target for the emergency fund recommendation
+  emergencyFundMonths: 6
+
 # common events and loans are shared among all scenarios you are tracking.
 common:
   # startingValue: this is the expected starting balance as of the end of this
@@ -64,6 +69,7 @@ common:
       startingValue: 25000.00
       annualReturnRate: 6.5
       taxRate: 15.0
+      withdrawalTaxRate: 15.0
       contributions:
         - amount: 500.00
           frequency: 1

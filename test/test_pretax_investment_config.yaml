@@ -1,7 +1,7 @@
 ---
 # Pre-tax retirement account configuration (traditional 401k style)
-# Expected 2026-01 balances: cash ≈ 9,000.00, account ≈ 14,889.48.
-# Combined total ≈ 23,889.48.
+# Expected 2026-01 balances: cash ≈ 8,918.46, account ≈ 14,889.48.
+# Combined total ≈ 23,807.94.
 startDate: 2024-12
 
 common:
@@ -12,6 +12,7 @@ common:
       startingValue: 10000.00
       annualReturnRate: 6.0
       taxRate: 0.0
+      withdrawalTaxRate: 10.0
       contributionsFromCash: false
       contributions:
         - amount: 500.00

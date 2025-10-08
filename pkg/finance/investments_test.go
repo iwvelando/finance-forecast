@@ -13,6 +13,7 @@ type stubInvestment struct {
 	startingValue float64
 	annualRate    float64
 	taxRate       float64
+	withdrawalTax float64
 	contributions map[string]float64
 	withdrawals   map[string]float64
 	withdrawalPct map[string]float64
@@ -33,6 +34,10 @@ func (s stubInvestment) GetAnnualReturnRate() float64 {
 
 func (s stubInvestment) GetTaxRate() float64 {
 	return s.taxRate
+}
+
+func (s stubInvestment) GetWithdrawalTaxRate() float64 {
+	return s.withdrawalTax
 }
 
 func (s stubInvestment) GetContributionForDate(date string) float64 {
@@ -191,6 +196,85 @@ func TestInvestmentProcessorProcessInvestmentsForDate_WithTaxesAndWithdrawal(t *
 	expectedValue := 957.5
 	if math.Abs(states["Taxed Fund"].CurrentValue-expectedValue) > 1e-9 {
 		t.Errorf("state.CurrentValue = %.2f, want %.2f", states["Taxed Fund"].CurrentValue, expectedValue)
+	}
+}
+
+func TestInvestmentProcessorProcessInvestmentsForDate_WithdrawalTaxApplied(t *testing.T) {
+	logger := zap.NewNop()
+	processor := NewInvestmentProcessor(logger)
+
+	inv := stubInvestment{
+		name:          "Taxable Brokerage",
+		startingValue: 1000,
+		annualRate:    12,
+		withdrawalTax: 25,
+		withdrawals:   map[string]float64{"2025-07": 100},
+		contributions: nil,
+		withdrawalPct: nil,
+		fromCash:      false,
+	}
+
+	investments := []Investment{inv}
+	states := processor.InitializeStates(investments)
+
+	totalChange, changes, err := processor.ProcessInvestmentsForDate("2025-07", investments, constants.DateTimeLayout, states)
+	if err != nil {
+		t.Fatalf("ProcessInvestmentsForDate returned error: %v", err)
+	}
+
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 investment change entry, got %d", len(changes))
+	}
+
+	change := changes[0]
+
+	expectedGrowth := 10.0
+	if math.Abs(change.Growth-expectedGrowth) > 1e-9 {
+		t.Errorf("Growth = %.2f, want %.2f", change.Growth, expectedGrowth)
+	}
+
+	if math.Abs(change.Withdrawal-100) > 1e-9 {
+		t.Errorf("Withdrawal = %.2f, want 100", change.Withdrawal)
+	}
+
+	if math.Abs(change.WithdrawalFromGrowth-expectedGrowth) > 1e-9 {
+		t.Errorf("WithdrawalFromGrowth = %.2f, want %.2f", change.WithdrawalFromGrowth, expectedGrowth)
+	}
+
+	expectedBasisWithdrawal := 90.0
+	if math.Abs(change.WithdrawalFromBasis-expectedBasisWithdrawal) > 1e-9 {
+		t.Errorf("WithdrawalFromBasis = %.2f, want %.2f", change.WithdrawalFromBasis, expectedBasisWithdrawal)
+	}
+
+	expectedWithdrawalTax := 2.5
+	if math.Abs(change.WithdrawalTax-expectedWithdrawalTax) > 1e-9 {
+		t.Errorf("WithdrawalTax = %.2f, want %.2f", change.WithdrawalTax, expectedWithdrawalTax)
+	}
+
+	expectedNetChange := expectedGrowth - change.Withdrawal
+	if math.Abs(change.NetChange-expectedNetChange) > 1e-9 {
+		t.Errorf("NetChange = %.2f, want %.2f", change.NetChange, expectedNetChange)
+	}
+
+	if math.Abs(totalChange-expectedNetChange) > 1e-9 {
+		t.Errorf("totalChange = %.2f, want %.2f", totalChange, expectedNetChange)
+	}
+
+	state := states["Taxable Brokerage"]
+	if state == nil {
+		t.Fatalf("state for Taxable Brokerage not found")
+	}
+
+	if math.Abs(state.CurrentValue-910.0) > 1e-9 {
+		t.Errorf("state.CurrentValue = %.2f, want 910.00", state.CurrentValue)
+	}
+
+	if math.Abs(state.PrincipalBalance-910.0) > 1e-9 {
+		t.Errorf("state.PrincipalBalance = %.2f, want 910.00", state.PrincipalBalance)
+	}
+
+	if state.GrowthBalance != 0 {
+		t.Errorf("state.GrowthBalance = %.2f, want 0", state.GrowthBalance)
 	}
 }
 

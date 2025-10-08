@@ -7,6 +7,17 @@ const tableBody = document.querySelector("#results-table tbody");
 const downloadLink = document.getElementById("download-link");
 const durationEl = document.getElementById("duration");
 const scenarioTabsEl = document.getElementById("scenario-tabs");
+const chartWrapper = document.getElementById("results-chart-wrapper");
+const chartSvg = document.getElementById("results-chart");
+const chartLegendEl = document.getElementById("results-chart-legend");
+const chartEmptyEl = document.getElementById("results-chart-empty");
+const chartTitleEl = document.getElementById("results-chart-title");
+const chartCaptionEl = document.getElementById("results-chart-caption");
+const resultsSummaryEl = document.getElementById("results-summary");
+const chartTooltipEl = document.getElementById("results-chart-tooltip");
+const chartTooltipDateEl = chartTooltipEl ? chartTooltipEl.querySelector('[data-role="tooltip-date"]') : null;
+const chartTooltipLiquidEl = chartTooltipEl ? chartTooltipEl.querySelector('[data-role="tooltip-liquid"]') : null;
+const chartTooltipTotalEl = chartTooltipEl ? chartTooltipEl.querySelector('[data-role="tooltip-total"]') : null;
 const configEditorRoot = document.getElementById("config-editor");
 const uploadConfigInput = document.getElementById("upload-config-input");
 const uploadConfigButton = document.getElementById("upload-config-button");
@@ -54,12 +65,43 @@ let latestForecastResponse = null;
 let editorPersistTimer = null;
 let editorStorageAvailable = null;
 let editorPersistenceHandlersRegistered = false;
+let chartResizeFrame = null;
 const THEME_STORAGE_KEY = "financeForecast.theme";
 const EDITOR_STORAGE_KEY = "financeForecast.editorState.v1";
 const EDITOR_STORAGE_VERSION = 1;
 const EDITOR_PERSIST_DEBOUNCE_MS = 600;
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const SVG_NS = "http://www.w3.org/2000/svg";
+const CHART_MARGIN = {
+	top: 44,
+	right: 36,
+	bottom: 90,
+	left: 96,
+};
+const CHART_MIN_HEIGHT = 220;
+const CHART_MAX_HEIGHT = 360;
+const CHART_ASPECT_RATIO = 0.55;
+const CHART_SERIES = [
+	{ key: "liquid", label: "Liquid Net Worth", lineClass: "chart-line--liquid", pointClass: "chart-point--liquid", swatchClass: "chart-legend-swatch--liquid" },
+	{ key: "total", label: "Total Net Worth", lineClass: "chart-line--total", pointClass: "chart-point--total", swatchClass: "chart-legend-swatch--total" },
+];
+const SUMMARY_CURRENCY_FORMATTER = new Intl.NumberFormat(undefined, {
+	style: "currency",
+	currency: "USD",
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
+const CHART_TOOLTIP_CURRENCY_FORMATTER = new Intl.NumberFormat(undefined, {
+	style: "currency",
+	currency: "USD",
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
+const CHART_TOOLTIP_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+	month: "long",
+	year: "numeric",
+});
 
 function getCurrentMonthValue() {
 	const now = new Date();
@@ -116,6 +158,7 @@ const updateStickyMetrics = () => {
 updateStickyMetrics();
 window.addEventListener("resize", updateStickyMetrics);
 window.addEventListener("load", updateStickyMetrics);
+window.addEventListener("resize", scheduleChartRerender);
 
 initializeWorkspace();
 initializeThemeControls();
@@ -478,8 +521,9 @@ async function runForecastFromFile(file) {
 function processForecastResponse(data, successMessage, options = {}) {
 	const { switchToResults = true } = options;
 	const scenarios = Array.isArray(data?.scenarios) ? [...data.scenarios] : [];
-	const rows = Array.isArray(data?.rows) ? data.rows : [];
-	forecastDataset = { scenarios, rows };
+	const rows = Array.isArray(data?.rows) ? [...data.rows] : [];
+	const metrics = Array.isArray(data?.metrics) ? data.metrics : [];
+	forecastDataset = { scenarios, rows, metrics };
 	if (scenarios.length === 0) {
 		activeScenarioIndex = 0;
 	} else if (activeScenarioIndex >= scenarios.length) {
@@ -523,6 +567,34 @@ function clearResultsView() {
 	latestCsvContent = "";
 	latestCsvFilename = "";
 
+	if (chartWrapper) {
+		chartWrapper.classList.add("hidden");
+	}
+	if (chartLegendEl) {
+		chartLegendEl.innerHTML = "";
+		chartLegendEl.classList.add("hidden");
+	}
+	if (chartSvg) {
+		while (chartSvg.firstChild) {
+			chartSvg.removeChild(chartSvg.firstChild);
+		}
+		chartSvg.classList.add("hidden");
+	}
+	if (chartEmptyEl) {
+		chartEmptyEl.classList.add("hidden");
+	}
+	if (chartCaptionEl) {
+		chartCaptionEl.textContent = "Line chart showing liquid and total net worth over time for the selected scenario.";
+	}
+	if (resultsSummaryEl) {
+		resultsSummaryEl.textContent = "";
+		resultsSummaryEl.classList.add("hidden");
+	}
+	if (chartResizeFrame !== null) {
+		window.cancelAnimationFrame(chartResizeFrame);
+		chartResizeFrame = null;
+	}
+
 	if (currentObjectUrl) {
 		URL.revokeObjectURL(currentObjectUrl);
 		currentObjectUrl = null;
@@ -561,6 +633,8 @@ function renderWarnings(warnings) {
 
 function renderActiveScenario() {
 	renderScenarioTabs();
+	renderScenarioSummary();
+	renderScenarioChart();
 	renderScenarioTable();
 }
 
@@ -617,6 +691,398 @@ function renderScenarioTabs() {
 	});
 
 	scenarioTabsEl.classList.remove("hidden");
+}
+
+function renderScenarioSummary() {
+	if (!resultsSummaryEl) {
+		return;
+	}
+
+	resultsSummaryEl.textContent = "";
+	resultsSummaryEl.classList.add("hidden");
+
+	if (!forecastDataset || !Array.isArray(forecastDataset.scenarios) || forecastDataset.scenarios.length === 0) {
+		return;
+	}
+
+	const scenarioIndex = clampActiveScenarioIndex();
+	const metrics = Array.isArray(forecastDataset.metrics) ? forecastDataset.metrics[scenarioIndex] : null;
+	if (!metrics || !metrics.emergencyFund) {
+		return;
+	}
+
+	const ef = metrics.emergencyFund;
+	const parts = [];
+	if (typeof ef.targetMonths === "number") {
+		parts.push(`Emergency fund target (${ef.targetMonths.toFixed(1)} months)`);
+	}
+	if (typeof ef.targetAmount === "number") {
+		parts.push(`Goal: ${SUMMARY_CURRENCY_FORMATTER.format(ef.targetAmount)}`);
+	}
+	if (typeof ef.averageMonthlyExpenses === "number" && ef.averageMonthlyExpenses > 0) {
+		parts.push(`Avg expenses: ${SUMMARY_CURRENCY_FORMATTER.format(ef.averageMonthlyExpenses)}`);
+	}
+	if (typeof ef.fundedMonths === "number" && Number.isFinite(ef.fundedMonths)) {
+		parts.push(`Starting coverage: ${ef.fundedMonths.toFixed(1)} months`);
+	}
+	if (typeof ef.shortfall === "number" && ef.shortfall > 0) {
+		parts.push(`Shortfall: ${SUMMARY_CURRENCY_FORMATTER.format(ef.shortfall)}`);
+	} else if (typeof ef.surplus === "number" && ef.surplus > 0) {
+		parts.push(`Surplus: ${SUMMARY_CURRENCY_FORMATTER.format(ef.surplus)}`);
+	}
+
+	if (parts.length === 0) {
+		return;
+	}
+
+	resultsSummaryEl.textContent = parts.join(" • ");
+	resultsSummaryEl.classList.remove("hidden");
+}
+
+function renderScenarioChart() {
+	if (!chartWrapper || !chartSvg || !chartLegendEl) {
+		return;
+	}
+
+	if (chartTooltipEl) {
+		chartTooltipEl.classList.add("hidden");
+		chartTooltipEl.setAttribute("aria-hidden", "true");
+	}
+
+	while (chartSvg.firstChild) {
+		chartSvg.removeChild(chartSvg.firstChild);
+	}
+	chartSvg.classList.add("hidden");
+	chartLegendEl.innerHTML = "";
+	chartLegendEl.classList.add("hidden");
+	if (chartEmptyEl) {
+		chartEmptyEl.classList.add("hidden");
+	}
+
+	if (!forecastDataset || !Array.isArray(forecastDataset.scenarios) || forecastDataset.scenarios.length === 0) {
+		if (chartWrapper) {
+			chartWrapper.classList.add("hidden");
+		}
+		return;
+	}
+
+	const scenarioIndex = clampActiveScenarioIndex();
+	const scenarioName = forecastDataset.scenarios[scenarioIndex] || `Scenario ${scenarioIndex + 1}`;
+	const rows = Array.isArray(forecastDataset.rows) ? forecastDataset.rows : [];
+
+	const points = rows
+		.map((row) => {
+			const parsedDate = parseForecastDate(row.date);
+			if (!parsedDate) {
+				return null;
+			}
+			const value = Array.isArray(row.values) ? row.values[scenarioIndex] || null : null;
+			const liquid = getScenarioValue(value, "liquid");
+			const total = getScenarioValue(value, "total");
+			if (liquid === null && total === null) {
+				return null;
+			}
+			return {
+				dateLabel: row.date,
+				date: parsedDate,
+				time: parsedDate.getTime(),
+				liquid,
+				total,
+			};
+		})
+		.filter(Boolean);
+
+	if (chartTitleEl) {
+		chartTitleEl.textContent = `Net Worth Over Time — ${scenarioName}`;
+	}
+	if (chartCaptionEl) {
+		chartCaptionEl.textContent = `Line chart showing liquid and total net worth over time for the selected scenario: ${scenarioName}.`;
+	}
+	chartSvg.setAttribute("aria-label", `Line chart of liquid and total net worth for ${scenarioName}.`);
+
+	buildChartLegend(points);
+
+	if (points.length === 0) {
+		chartWrapper.classList.remove("hidden");
+		chartLegendEl.classList.remove("hidden");
+		if (chartEmptyEl) {
+			chartEmptyEl.classList.remove("hidden");
+		}
+		updateStickyMetrics();
+		return;
+	}
+
+	const sortedPoints = points.slice().sort((a, b) => a.time - b.time);
+	const containerWidth = Math.max(chartWrapper.clientWidth || 0, 480);
+	const width = containerWidth;
+	const height = Math.max(
+		CHART_MIN_HEIGHT,
+		Math.min(CHART_MAX_HEIGHT, Math.round(containerWidth * CHART_ASPECT_RATIO)),
+	);
+
+	chartSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+	chartSvg.setAttribute("width", width);
+	chartSvg.setAttribute("height", height);
+	chartSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+	chartSvg.classList.remove("hidden");
+	chartWrapper.classList.remove("hidden");
+	chartLegendEl.classList.remove("hidden");
+	if (chartEmptyEl) {
+		chartEmptyEl.classList.add("hidden");
+	}
+
+	const existingDesc = chartSvg.querySelector("desc");
+	if (existingDesc) {
+		chartSvg.removeChild(existingDesc);
+	}
+	const descEl = createSvgElement("desc");
+	descEl.textContent = `Liquid and total net worth for ${scenarioName} from ${sortedPoints[0].dateLabel} to ${sortedPoints[sortedPoints.length - 1].dateLabel}.`;
+	chartSvg.insertBefore(descEl, chartSvg.firstChild);
+
+	const xValues = sortedPoints.map((point) => point.time);
+	const yValues = [];
+	sortedPoints.forEach((point) => {
+		if (typeof point.liquid === "number" && Number.isFinite(point.liquid)) {
+			yValues.push(point.liquid);
+		}
+		if (typeof point.total === "number" && Number.isFinite(point.total)) {
+			yValues.push(point.total);
+		}
+	});
+
+	if (yValues.length > 0) {
+		const min = Math.min(...yValues);
+		const max = Math.max(...yValues);
+		if (min > 0) {
+			yValues.push(0);
+		}
+		if (max < 0) {
+			yValues.push(0);
+		}
+	} else {
+		yValues.push(0);
+	}
+
+	let xMin = Math.min(...xValues);
+	let xMax = Math.max(...xValues);
+	if (!Number.isFinite(xMin) || !Number.isFinite(xMax)) {
+		xMin = Date.now();
+		xMax = xMin + 1;
+	}
+	if (xMin === xMax) {
+		const halfWindow = 1000 * 60 * 60 * 24 * 15;
+		xMin -= halfWindow;
+		xMax += halfWindow;
+	}
+
+	let yMin = Math.min(...yValues);
+	let yMax = Math.max(...yValues);
+	if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+		yMin = 0;
+		yMax = 1;
+	}
+	if (yMin === yMax) {
+		const pad = Math.max(Math.abs(yMin) * 0.15, 1000);
+		yMin -= pad;
+		yMax += pad;
+	} else {
+		const pad = (yMax - yMin) * 0.08;
+		yMin -= pad;
+		yMax += pad;
+	}
+
+	const plotLeftX = CHART_MARGIN.left;
+	const plotRightX = width - CHART_MARGIN.right;
+	const plotTopY = CHART_MARGIN.top;
+	const plotBottomY = height - CHART_MARGIN.bottom;
+	const plotWidth = Math.max(0, plotRightX - plotLeftX);
+	const plotHeight = Math.max(0, plotBottomY - plotTopY);
+
+	const xScale = createLinearScale(xMin, xMax, plotLeftX, plotRightX);
+	const yScale = createLinearScale(yMin, yMax, plotBottomY, plotTopY);
+
+	const bandsGroup = createSvgElement("g", { class: "chart-bands" });
+	const gridGroup = createSvgElement("g", { class: "chart-grid" });
+	const axesGroup = createSvgElement("g", { class: "chart-axes" });
+	const linesGroup = createSvgElement("g", { class: "chart-lines" });
+	const pointsGroup = createSvgElement("g", { class: "chart-points" });
+	const interactionGroup = createSvgElement("g", { class: "chart-interaction" });
+	chartSvg.appendChild(bandsGroup);
+	chartSvg.appendChild(gridGroup);
+	chartSvg.appendChild(linesGroup);
+	chartSvg.appendChild(pointsGroup);
+	chartSvg.appendChild(axesGroup);
+	chartSvg.appendChild(interactionGroup);
+
+	const currencyFormatter = new Intl.NumberFormat(undefined, {
+		style: "currency",
+		currency: "USD",
+		maximumFractionDigits: 0,
+		notation: "compact",
+		compactDisplay: "short",
+	});
+	const dateFormatter = new Intl.DateTimeFormat(undefined, {
+		month: "short",
+		year: "numeric",
+	});
+
+	const zeroY = yMin <= 0 && yMax >= 0 ? yScale(0) : null;
+	if (yMin < 0 && Number.isFinite(zeroY) && plotHeight > 0) {
+		const bandY = Math.min(zeroY, plotBottomY);
+		const bandHeight = Math.abs(plotBottomY - zeroY);
+		if (bandHeight > 0.5) {
+			const negativeBand = createSvgElement("rect", {
+				class: "chart-negative-band",
+				x: plotLeftX,
+				y: bandY,
+				width: plotWidth,
+				height: bandHeight,
+			});
+			bandsGroup.appendChild(negativeBand);
+		}
+	}
+
+	const yTicks = generateLinearTicks(yMin, yMax, 5);
+	yTicks.forEach((tick) => {
+		if (!Number.isFinite(tick)) {
+			return;
+		}
+		const y = yScale(tick);
+		if (!Number.isFinite(y)) {
+			return;
+		}
+		if (y < plotTopY - 0.5 || y > plotBottomY + 0.5) {
+			return;
+		}
+		const gridLine = createSvgElement("line", {
+			class: "chart-grid-line",
+			x1: plotLeftX,
+			x2: plotRightX,
+			y1: y,
+			y2: y,
+		});
+		gridGroup.appendChild(gridLine);
+
+		const label = createSvgElement("text", {
+			class: "chart-axis-label",
+			x: plotLeftX - 18,
+			y,
+			"text-anchor": "end",
+			"dominant-baseline": "middle",
+		});
+		label.textContent = currencyFormatter.format(tick);
+		axesGroup.appendChild(label);
+	});
+
+	const xTickCount = Math.max(3, Math.min(8, Math.round(width / 160)));
+	const xTicks = generateTimeTicks(sortedPoints, xTickCount);
+	xTicks.forEach((tickPoint) => {
+		const x = xScale(tickPoint.time);
+		if (!Number.isFinite(x)) {
+			return;
+		}
+		if (x > plotLeftX + 0.5 && x < plotRightX - 0.5) {
+			const verticalLine = createSvgElement("line", {
+				class: "chart-grid-line",
+				x1: x,
+				x2: x,
+				y1: plotTopY,
+				y2: plotBottomY,
+			});
+			gridGroup.appendChild(verticalLine);
+		}
+		const label = createSvgElement("text", {
+			class: "chart-axis-tick",
+			x,
+			y: plotBottomY + 16,
+			"text-anchor": "middle",
+		});
+		label.textContent = dateFormatter.format(tickPoint.date);
+		axesGroup.appendChild(label);
+	});
+
+	const yAxisLine = createSvgElement("line", {
+		class: "chart-axis",
+		x1: plotLeftX,
+		x2: plotLeftX,
+		y1: plotTopY,
+		y2: plotBottomY,
+	});
+	const xAxisLine = createSvgElement("line", {
+		class: "chart-axis",
+		x1: plotLeftX,
+		x2: plotRightX,
+		y1: plotBottomY,
+		y2: plotBottomY,
+	});
+	axesGroup.appendChild(yAxisLine);
+	axesGroup.appendChild(xAxisLine);
+
+	if (Number.isFinite(zeroY)) {
+		const zeroLine = createSvgElement("line", {
+			class: "chart-reference-line",
+			x1: plotLeftX,
+			x2: plotRightX,
+			y1: zeroY,
+			y2: zeroY,
+		});
+		gridGroup.appendChild(zeroLine);
+	}
+	const yAxisLabel = createSvgElement("text", {
+		class: "chart-axis-label chart-axis-label-y",
+		x: plotLeftX - 58,
+		y: (plotTopY + plotBottomY) / 2,
+	});
+	yAxisLabel.textContent = "Net Worth (USD)";
+	axesGroup.appendChild(yAxisLabel);
+
+	const xAxisLabel = createSvgElement("text", {
+		class: "chart-axis-label chart-axis-label-x",
+		x: (plotLeftX + plotRightX) / 2,
+		y: plotBottomY + 44,
+	});
+	xAxisLabel.textContent = "Time";
+	axesGroup.appendChild(xAxisLabel);
+
+	CHART_SERIES.forEach((series) => {
+		const linePath = buildLinePath(sortedPoints, (point) => point[series.key], xScale, yScale);
+		if (!linePath) {
+			return;
+		}
+		const pathElement = createSvgElement("path", {
+			class: `chart-line ${series.lineClass}`,
+			d: linePath,
+		});
+		linesGroup.appendChild(pathElement);
+
+		const seriesPoints = sortedPoints.filter((point) => typeof point[series.key] === "number" && Number.isFinite(point[series.key]));
+		if (seriesPoints.length === 0) {
+			return;
+		}
+		const lastPoint = seriesPoints[seriesPoints.length - 1];
+		const circle = createSvgElement("circle", {
+			class: `chart-point ${series.pointClass}`,
+			cx: xScale(lastPoint.time),
+			cy: yScale(lastPoint[series.key]),
+			r: 4,
+		});
+		pointsGroup.appendChild(circle);
+	});
+
+	setupChartTooltip({
+		sortedPoints,
+		xScale,
+		plotLeftX,
+		plotRightX,
+		plotTopY,
+		plotBottomY,
+		xMin,
+		xMax,
+		interactionGroup,
+		chartSvg,
+	});
+
+	updateStickyMetrics();
 }
 
 function renderScenarioTable() {
@@ -681,6 +1147,425 @@ function renderScenarioTable() {
 		tableBody.appendChild(tr);
 	});
 }
+
+	function buildChartLegend(points) {
+		if (!chartLegendEl) {
+			return;
+		}
+
+		chartLegendEl.innerHTML = "";
+		const entries = Array.isArray(points) ? points : [];
+		const hasAnyEntries = entries.length > 0;
+
+		CHART_SERIES.forEach((series) => {
+			const hasValues = hasAnyEntries
+				? entries.some((point) => typeof point[series.key] === "number" && Number.isFinite(point[series.key]))
+				: false;
+			const item = document.createElement("span");
+			item.className = "chart-legend-item";
+			item.setAttribute("role", "listitem");
+			if (!hasValues) {
+				item.classList.add("chart-legend-item--muted");
+				item.setAttribute("aria-disabled", "true");
+			}
+			const swatch = document.createElement("span");
+			swatch.className = `chart-legend-swatch ${series.swatchClass}`;
+			item.appendChild(swatch);
+			const label = document.createElement("span");
+			label.textContent = series.label;
+			item.appendChild(label);
+			chartLegendEl.appendChild(item);
+		});
+
+		if (chartLegendEl.children.length === 0) {
+			chartLegendEl.classList.add("hidden");
+		} else {
+			chartLegendEl.classList.remove("hidden");
+		}
+	}
+
+	function getScenarioValue(value, key) {
+		if (!value || typeof value !== "object") {
+			return null;
+		}
+		const candidate = value[key];
+		if (typeof candidate === "number" && Number.isFinite(candidate)) {
+			return candidate;
+		}
+		if (typeof value.amount === "number" && Number.isFinite(value.amount)) {
+			return value.amount;
+		}
+		return null;
+	}
+
+	function parseForecastDate(raw) {
+		if (typeof raw !== "string" || raw.trim() === "") {
+			return null;
+		}
+		const normalized = raw.trim();
+		if (MONTH_PATTERN.test(normalized)) {
+			const [yearStr, monthStr] = normalized.split("-");
+			const year = Number(yearStr);
+			const month = Number(monthStr) - 1;
+			if (Number.isFinite(year) && Number.isFinite(month)) {
+				return new Date(year, month, 1);
+			}
+		}
+		const parsed = Date.parse(normalized);
+		if (!Number.isNaN(parsed)) {
+			return new Date(parsed);
+		}
+		return null;
+	}
+
+	function createSvgElement(tag, attributes = {}) {
+		const element = document.createElementNS(SVG_NS, tag);
+		Object.entries(attributes).forEach(([name, value]) => {
+			if (value === null || typeof value === "undefined" || (typeof value === "number" && Number.isNaN(value))) {
+				return;
+			}
+			element.setAttribute(name, String(value));
+		});
+		return element;
+	}
+
+	function createLinearScale(domainMin, domainMax, rangeMin, rangeMax) {
+		if (!Number.isFinite(domainMin) || !Number.isFinite(domainMax) || domainMin === domainMax) {
+			const center = (rangeMin + rangeMax) / 2;
+			return () => center;
+		}
+		const domainSpan = domainMax - domainMin;
+		const rangeSpan = rangeMax - rangeMin;
+		return (value) => {
+			if (!Number.isFinite(value)) {
+				return NaN;
+			}
+			const ratio = (value - domainMin) / domainSpan;
+			return rangeMin + ratio * rangeSpan;
+		};
+	}
+
+	function buildLinePath(points, accessor, xScale, yScale) {
+		let path = "";
+		let segmentOpen = false;
+		points.forEach((point) => {
+			const value = accessor(point);
+			if (typeof value !== "number" || !Number.isFinite(value)) {
+				segmentOpen = false;
+				return;
+			}
+			const x = xScale(point.time);
+			const y = yScale(value);
+			if (!Number.isFinite(x) || !Number.isFinite(y)) {
+				segmentOpen = false;
+				return;
+			}
+			if (!segmentOpen) {
+				path += `M${x} ${y}`;
+				segmentOpen = true;
+			} else {
+				path += ` L${x} ${y}`;
+			}
+		});
+		return path.length > 0 ? path : null;
+	}
+
+	function generateLinearTicks(min, max, count = 5) {
+		if (!Number.isFinite(min) || !Number.isFinite(max)) {
+			return [];
+		}
+		if (min === max) {
+			return [min];
+		}
+		const span = max - min;
+		const step = niceNumber(span / Math.max(1, count - 1), true);
+		const niceMin = Math.floor(min / step) * step;
+		const niceMax = Math.ceil(max / step) * step;
+		const ticks = [];
+		for (let tick = niceMin; tick <= niceMax + step * 0.5; tick += step) {
+			ticks.push(Number(tick.toFixed(10)));
+		}
+		return ticks;
+	}
+
+	function niceNumber(value, round) {
+		if (!Number.isFinite(value) || value === 0) {
+			return 1;
+		}
+		const exponent = Math.floor(Math.log10(Math.abs(value)));
+		const fraction = Math.abs(value) / 10 ** exponent;
+		let niceFraction;
+
+		if (round) {
+			if (fraction < 1.5) {
+				niceFraction = 1;
+			} else if (fraction < 3) {
+				niceFraction = 2;
+			} else if (fraction < 7) {
+				niceFraction = 5;
+			} else {
+				niceFraction = 10;
+			}
+		} else if (fraction <= 1) {
+			niceFraction = 1;
+		} else if (fraction <= 2) {
+			niceFraction = 2;
+		} else if (fraction <= 5) {
+			niceFraction = 5;
+		} else {
+			niceFraction = 10;
+		}
+
+		return niceFraction * 10 ** exponent;
+	}
+
+	function generateTimeTicks(points, desiredCount) {
+		if (!Array.isArray(points) || points.length === 0) {
+			return [];
+		}
+		if (points.length <= desiredCount) {
+			return points;
+		}
+		const step = Math.max(1, Math.ceil(points.length / desiredCount));
+		const ticks = [];
+		for (let index = 0; index < points.length; index += step) {
+			ticks.push(points[index]);
+		}
+		const lastPoint = points[points.length - 1];
+		if (ticks[ticks.length - 1]?.time !== lastPoint.time) {
+			ticks.push(lastPoint);
+		}
+		return ticks;
+	}
+
+		function setupChartTooltip({
+			sortedPoints,
+			xScale,
+			plotLeftX,
+			plotRightX,
+			plotTopY,
+			plotBottomY,
+			xMin,
+			xMax,
+			interactionGroup,
+			chartSvg,
+		}) {
+			if (!chartTooltipEl || !chartWrapper || !interactionGroup) {
+				return;
+			}
+			if (!Array.isArray(sortedPoints) || sortedPoints.length === 0) {
+				return;
+			}
+
+			const plotWidth = Math.max(0, plotRightX - plotLeftX);
+			const plotHeight = Math.max(0, plotBottomY - plotTopY);
+			if (plotWidth <= 0 || plotHeight <= 0) {
+				return;
+			}
+
+			const tooltipPoints = sortedPoints
+				.map((point) => {
+					const x = xScale(point.time);
+					if (!Number.isFinite(x)) {
+						return null;
+					}
+					return {
+						data: point,
+						x,
+						time: point.time,
+					};
+				})
+				.filter(Boolean);
+
+			if (tooltipPoints.length === 0) {
+				return;
+			}
+
+			const overlayRect = createSvgElement("rect", {
+				class: "chart-overlay",
+				x: plotLeftX,
+				y: plotTopY,
+				width: plotWidth,
+				height: plotHeight,
+				fill: "transparent",
+				"pointer-events": "all",
+			});
+			const pointerLine = createSvgElement("line", {
+				class: "chart-pointer-line",
+				x1: plotLeftX,
+				x2: plotLeftX,
+				y1: plotTopY,
+				y2: plotBottomY,
+				"pointer-events": "none",
+			});
+
+			interactionGroup.appendChild(overlayRect);
+			interactionGroup.appendChild(pointerLine);
+
+			const hideTooltip = () => {
+				pointerLine.classList.remove("chart-pointer-line--active");
+				chartTooltipEl.classList.add("hidden");
+				chartTooltipEl.setAttribute("aria-hidden", "true");
+				chartTooltipEl.style.left = "-9999px";
+				chartTooltipEl.style.top = "-9999px";
+			};
+
+			const positionTooltip = (clientX, clientY) => {
+				const wrapperRect = chartWrapper.getBoundingClientRect();
+				const tooltipRect = chartTooltipEl.getBoundingClientRect();
+				let left = clientX - wrapperRect.left + 16;
+				let top = clientY - wrapperRect.top - tooltipRect.height - 16;
+				const padding = 8;
+
+				if (left + tooltipRect.width > wrapperRect.width - padding) {
+					left = wrapperRect.width - tooltipRect.width - padding;
+				}
+				if (left < padding) {
+					left = padding;
+				}
+				if (top < padding) {
+					top = clientY - wrapperRect.top + 16;
+				}
+				if (top + tooltipRect.height > wrapperRect.height - padding) {
+					top = wrapperRect.height - tooltipRect.height - padding;
+				}
+
+				chartTooltipEl.style.left = `${left}px`;
+				chartTooltipEl.style.top = `${top}px`;
+			};
+
+			const updateTooltip = (entry, clientX, clientY) => {
+				if (!entry) {
+					return;
+				}
+				pointerLine.setAttribute("x1", entry.x);
+				pointerLine.setAttribute("x2", entry.x);
+				pointerLine.classList.add("chart-pointer-line--active");
+
+				const { data } = entry;
+				if (chartTooltipDateEl) {
+					const formattedDate = data.date instanceof Date && !Number.isNaN(data.date.valueOf())
+						? CHART_TOOLTIP_DATE_FORMATTER.format(data.date)
+						: data.dateLabel || "";
+					chartTooltipDateEl.textContent = formattedDate || "—";
+				}
+				if (chartTooltipLiquidEl) {
+					chartTooltipLiquidEl.textContent = formatTooltipCurrency(data.liquid);
+				}
+				if (chartTooltipTotalEl) {
+					chartTooltipTotalEl.textContent = formatTooltipCurrency(data.total);
+				}
+
+				chartTooltipEl.classList.remove("hidden");
+				chartTooltipEl.setAttribute("aria-hidden", "false");
+				positionTooltip(clientX, clientY);
+			};
+
+			const findNearestEntry = (hoverTime) => {
+				let nearest = null;
+				let nearestDistance = Infinity;
+				for (const entry of tooltipPoints) {
+					const distance = Math.abs(entry.time - hoverTime);
+					if (distance < nearestDistance) {
+						nearestDistance = distance;
+						nearest = entry;
+					}
+				}
+				return nearest;
+			};
+
+			const handleClientPoint = (clientX, clientY) => {
+				const svgPoint = clientPointToSvgCoordinates(chartSvg, clientX, clientY);
+				if (!svgPoint) {
+					hideTooltip();
+					return;
+				}
+				const clampedX = clampValue(svgPoint.x, plotLeftX, plotRightX);
+				const domainSpan = Math.max(1, xMax - xMin);
+				const ratio = domainSpan === 0 ? 0 : (clampedX - plotLeftX) / Math.max(1, plotWidth);
+				const hoverTime = xMin + ratio * (xMax - xMin);
+				const nearest = findNearestEntry(hoverTime);
+				if (!nearest) {
+					hideTooltip();
+					return;
+				}
+				updateTooltip(nearest, clientX, clientY);
+			};
+
+			const handleMouseMove = (event) => {
+				handleClientPoint(event.clientX, event.clientY);
+			};
+
+			const handleTouchMove = (event) => {
+				if (!event.touches || event.touches.length === 0) {
+					hideTooltip();
+					return;
+				}
+				const touch = event.touches[0];
+				event.preventDefault();
+				handleClientPoint(touch.clientX, touch.clientY);
+			};
+
+			overlayRect.addEventListener("mouseenter", handleMouseMove);
+			overlayRect.addEventListener("mousemove", handleMouseMove);
+			overlayRect.addEventListener("mouseleave", hideTooltip);
+			overlayRect.addEventListener("touchstart", handleTouchMove, { passive: false });
+			overlayRect.addEventListener("touchmove", handleTouchMove, { passive: false });
+			overlayRect.addEventListener("touchend", hideTooltip);
+			overlayRect.addEventListener("touchcancel", hideTooltip);
+
+			hideTooltip();
+		}
+
+		function formatTooltipCurrency(value) {
+			if (typeof value !== "number" || !Number.isFinite(value)) {
+				return "—";
+			}
+			return CHART_TOOLTIP_CURRENCY_FORMATTER.format(value);
+		}
+
+		function clampValue(value, min, max) {
+			if (!Number.isFinite(value)) {
+				return value;
+			}
+			if (value < min) {
+				return min;
+			}
+			if (value > max) {
+				return max;
+			}
+			return value;
+		}
+
+		function clientPointToSvgCoordinates(svg, clientX, clientY) {
+			if (!svg || typeof svg.createSVGPoint !== "function") {
+				return null;
+			}
+			const point = svg.createSVGPoint();
+			point.x = clientX;
+			point.y = clientY;
+			const screenCTM = svg.getScreenCTM();
+			if (!screenCTM || typeof screenCTM.inverse !== "function") {
+				return null;
+			}
+			return point.matrixTransform(screenCTM.inverse());
+		}
+
+	function scheduleChartRerender() {
+		if (!forecastDataset || !chartWrapper || !chartSvg) {
+			return;
+		}
+		if (resultsPanel && resultsPanel.hidden) {
+			return;
+		}
+		if (chartResizeFrame !== null) {
+			return;
+		}
+		chartResizeFrame = window.requestAnimationFrame(() => {
+			chartResizeFrame = null;
+			renderScenarioChart();
+		});
+	}
 
 function prepareDownload(csvContent) {
 	if (!downloadLink) {
@@ -830,6 +1715,13 @@ function prepareConfigForEditing(rawConfig) {
 		cloned.output.format = "pretty";
 	}
 
+	if (!cloned.recommendations || typeof cloned.recommendations !== "object") {
+		cloned.recommendations = {};
+	}
+	if (cloned.recommendations.emergencyFundMonths === undefined) {
+		cloned.recommendations.emergencyFundMonths = 6;
+	}
+
 	return {
 		config: cloned,
 		logging: loggingConfig,
@@ -907,6 +1799,16 @@ function renderConfigEditor() {
 		validation: { type: "month", required: true },
 		maxLength: 7,
 		enableNowShortcut: true,
+	}));
+	simGrid.appendChild(createInputField({
+		label: "Emergency fund target (months)",
+		path: "recommendations.emergencyFundMonths",
+		value: currentConfig.recommendations?.emergencyFundMonths ?? "",
+		inputType: "number",
+		step: "0.1",
+		arrowStep: ARROW_STEP_SMALL,
+		tooltip: "Months of expenses to target for the emergency fund recommendation. Set to 0 to disable.",
+		validation: { type: "number", min: 0, max: 120 },
 	}));
 	simulationSection.body.appendChild(simGrid);
 	configEditorRoot.appendChild(simulationSection.section);
@@ -1441,6 +2343,16 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		step: "0.01",
 		arrowStep: ARROW_STEP_SMALL,
 		tooltip: "Optional tax rate applied to positive monthly gains.",
+		validation: { type: "number", min: 0, max: 100 },
+	}));
+	grid.appendChild(createInputField({
+		label: "Tax rate on withdrawals (%)",
+		path: `${basePath}.withdrawalTaxRate`,
+		value: investment.withdrawalTaxRate ?? "",
+		inputType: "number",
+		step: "0.01",
+		arrowStep: ARROW_STEP_SMALL,
+		tooltip: "Tax rate applied to the growth portion of withdrawals (e.g. gains taxed when funds are distributed).",
 		validation: { type: "number", min: 0, max: 100 },
 	}));
 	grid.appendChild(createCheckboxField({
@@ -2301,6 +3213,7 @@ function createEmptyInvestment() {
 		startingValue: 0,
 		annualReturnRate: 0,
 		taxRate: 0,
+		withdrawalTaxRate: 0,
 		contributions: [],
 		withdrawals: [],
 		contributionsFromCash: false,
@@ -2321,6 +3234,9 @@ function createInitialConfig() {
 	return {
 		startDate: "",
 		output: { format: "pretty" },
+		recommendations: {
+			emergencyFundMonths: 6,
+		},
 		common: {
 			startingValue: "",
 			deathDate: "",
@@ -2391,6 +3307,10 @@ function switchTab(tabName) {
 	});
 
 	updateStickyMetrics();
+
+		if (tabName === "results" && forecastDataset) {
+			renderScenarioChart();
+		}
 }
 
 async function handleRunForecast() {

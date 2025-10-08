@@ -291,6 +291,7 @@ func TestInvestmentsToFinanceInvestments(t *testing.T) {
 		StartingValue:         5000.0,
 		AnnualReturnRate:      6.0,
 		TaxRate:               24.0,
+		WithdrawalTaxRate:     15.0,
 		ContributionsFromCash: true,
 		Contributions: []config.Event{
 			{
@@ -328,6 +329,10 @@ func TestInvestmentsToFinanceInvestments(t *testing.T) {
 
 	if fi.GetTaxRate() != 24.0 {
 		t.Errorf("GetTaxRate() = %.2f, want 24.0", fi.GetTaxRate())
+	}
+
+	if fi.GetWithdrawalTaxRate() != 15.0 {
+		t.Errorf("GetWithdrawalTaxRate() = %.2f, want 15.0", fi.GetWithdrawalTaxRate())
 	}
 
 	if fi.GetContributionForDate("2025-07") != 500 {

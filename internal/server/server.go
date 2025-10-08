@@ -67,6 +67,7 @@ type forecastResponse struct {
 	Scenarios  []string               `json:"scenarios"`
 	Rows       []forecastRow          `json:"rows"`
 	CSV        string                 `json:"csv"`
+	Metrics    []scenarioMetrics      `json:"metrics,omitempty"`
 	Warnings   []string               `json:"warnings,omitempty"`
 	Duration   string                 `json:"duration"`
 	Config     map[string]interface{} `json:"config,omitempty"`
@@ -82,6 +83,20 @@ type scenarioValue struct {
 	Liquid *float64 `json:"liquid,omitempty"`
 	Total  *float64 `json:"total,omitempty"`
 	Notes  []string `json:"notes,omitempty"`
+}
+
+type scenarioMetrics struct {
+	EmergencyFund *emergencyFundMetric `json:"emergencyFund,omitempty"`
+}
+
+type emergencyFundMetric struct {
+	TargetMonths           float64 `json:"targetMonths"`
+	AverageMonthlyExpenses float64 `json:"averageMonthlyExpenses"`
+	TargetAmount           float64 `json:"targetAmount"`
+	InitialLiquid          float64 `json:"initialLiquid"`
+	FundedMonths           float64 `json:"fundedMonths"`
+	Shortfall              float64 `json:"shortfall"`
+	Surplus                float64 `json:"surplus"`
 }
 
 func (h *handler) handleForecast(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +300,7 @@ func (h *handler) runForecast(w http.ResponseWriter, configBytes []byte, configM
 		Scenarios:  extractScenarioNames(results),
 		Rows:       buildRows(results),
 		CSV:        output.CsvString(results),
+		Metrics:    buildMetrics(results),
 		Warnings:   warnings,
 		Duration:   elapsed.String(),
 		Config:     configMap,
@@ -399,6 +415,31 @@ func buildRows(results []forecast.Forecast) []forecastRow {
 	}
 
 	return rows
+}
+
+func buildMetrics(results []forecast.Forecast) []scenarioMetrics {
+	if len(results) == 0 {
+		return nil
+	}
+
+	metrics := make([]scenarioMetrics, 0, len(results))
+	for _, scenario := range results {
+		var scenarioMetric scenarioMetrics
+		if ef := scenario.Metrics.EmergencyFund; ef != nil {
+			scenarioMetric.EmergencyFund = &emergencyFundMetric{
+				TargetMonths:           ef.TargetMonths,
+				AverageMonthlyExpenses: ef.AverageMonthlyExpenses,
+				TargetAmount:           ef.TargetAmount,
+				InitialLiquid:          ef.InitialLiquid,
+				FundedMonths:           ef.FundedMonths,
+				Shortfall:              ef.Shortfall,
+				Surplus:                ef.Surplus,
+			}
+		}
+		metrics = append(metrics, scenarioMetric)
+	}
+
+	return metrics
 }
 
 func normalizeNotes(notes []string) []string {

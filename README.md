@@ -36,6 +36,7 @@ When running in server mode:
 - `--addr`: Bind address for the web UI server (overrides server config)
 - `--server-config`: Path to the server configuration file (default `server-config.yaml`)
 - `--max-upload`: Maximum upload size in bytes for YAML configs (overrides server config)
+- `--emergency-months`: Override the months of expenses used for emergency fund recommendations (set to `0` to disable)
 
 ## Key Concepts
 
@@ -55,9 +56,15 @@ When running in server mode:
   - `startingValue`: balance at the beginning of the simulation
   - `annualReturnRate`: expected average annual growth (percentage)
   - `taxRate`: optional tax rate applied to positive monthly gains
+  - `withdrawalTaxRate`: optional tax rate applied to the growth portion of withdrawals
   - `contributionsFromCash`: optional toggle (default `false`) that, when enabled, deducts contribution amounts from the simulated cash balance (useful for Roth IRA or brokerage contributions). Leave disabled for pre-tax payroll deductions such as traditional 401(k).
   - `contributions` / `withdrawals`: arrays of event-style schedules (amount, frequency, start/end dates). Withdrawal events may specify a fixed `amount` or a `percentage` of the current balance; each investment must choose one style for all of its withdrawals.
-- Investment balances compound monthly; contributions and withdrawals update the account before growth is calculated.
+- Investment balances compound monthly; contributions and withdrawals update the account before growth is calculated. Withdrawals automatically track how much came from principal versus growth and estimate taxes accordingly when `withdrawalTaxRate` is set.
+
+### Emergency Fund Recommendation
+- Configure `recommendations.emergencyFundMonths` (default `6`) to control the emergency fund target window.
+- The simulator estimates average monthly expenses across the run and highlights how many months of coverage your starting liquid balance provides.
+- Set the value to `0` via configuration or `--emergency-months=0` to disable the recommendation entirely.
 
 ## Logging and Output Configuration
 

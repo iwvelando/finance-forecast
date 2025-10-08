@@ -434,6 +434,20 @@ func TestGetForecastWithInvestments(t *testing.T) {
 	}
 }
 
+func TestSumWithdrawals_NetsTaxes(t *testing.T) {
+	changes := []finance.InvestmentChange{
+		{Withdrawal: 100, WithdrawalTax: 20},
+		{Withdrawal: 50},
+	}
+
+	got := sumWithdrawals(changes)
+	want := 130.0
+
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("sumWithdrawals() = %.2f, want %.2f", got, want)
+	}
+}
+
 func TestGetForecastWithInvestmentsContributionReducingIncome(t *testing.T) {
 	logger := zap.NewNop()
 
@@ -559,5 +573,139 @@ func TestInvestmentNotesShowGrossGrowth(t *testing.T) {
 	}
 	if !sawTax {
 		t.Errorf("expected tax note to show withheld amount, notes: %v", notes)
+	}
+}
+
+func TestInvestmentNotesIncludeWithdrawalBreakdown(t *testing.T) {
+	logger := zap.NewNop()
+
+	conf := config.Configuration{
+		Common: config.Common{
+			StartingValue: 0,
+			DeathDate:     "2025-03",
+		},
+		Scenarios: []config.Scenario{
+			{
+				Name:   "Withdrawal Scenario",
+				Active: true,
+				Investments: []config.Investment{
+					{
+						Name:              "Brokerage",
+						StartingValue:     1000,
+						AnnualReturnRate:  12,
+						WithdrawalTaxRate: 25,
+						Withdrawals: []config.Event{
+							{
+								Amount:   100,
+								DateList: []time.Time{datetime.MustParseTime(config.DateTimeLayout, "2025-02")},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	results, err := GetForecastWithFixedTime(logger, conf, fixedTime)
+	if err != nil {
+		t.Fatalf("GetForecastWithFixedTime() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 forecast result, got %d", len(results))
+	}
+
+	notes := results[0].Notes["2025-02"]
+	if len(notes) == 0 {
+		t.Fatalf("expected notes for withdrawal month, got none")
+	}
+
+	var sawBreakdown, sawTax bool
+	for _, note := range notes {
+		if strings.Contains(note, "withdrawal +100.00") && strings.Contains(note, "basis +90.00") && strings.Contains(note, "growth +10.00") {
+			sawBreakdown = true
+		}
+		if strings.Contains(note, "withdrawal tax 2.50") {
+			sawTax = true
+		}
+	}
+
+	if !sawBreakdown {
+		t.Fatalf("expected withdrawal breakdown in notes, got %v", notes)
+	}
+
+	if !sawTax {
+		t.Fatalf("expected withdrawal tax entry in notes, got %v", notes)
+	}
+}
+
+func TestEmergencyFundMetrics(t *testing.T) {
+	logger := zap.NewNop()
+
+	conf := config.Configuration{
+		Common: config.Common{
+			StartingValue: 12000,
+			DeathDate:     "2025-03",
+			Events: []config.Event{
+				{
+					Name:   "Rent",
+					Amount: -2000,
+					DateList: []time.Time{
+						datetime.MustParseTime(config.DateTimeLayout, "2025-02"),
+						datetime.MustParseTime(config.DateTimeLayout, "2025-03"),
+					},
+				},
+			},
+		},
+		Scenarios: []config.Scenario{
+			{
+				Name:   "Baseline",
+				Active: true,
+			},
+		},
+		Recommendations: config.RecommendationsConfig{EmergencyFundMonths: 6},
+	}
+
+	fixedTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	results, err := GetForecastWithFixedTime(logger, conf, fixedTime)
+	if err != nil {
+		t.Fatalf("GetForecastWithFixedTime() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 scenario result, got %d", len(results))
+	}
+
+	metrics := results[0].Metrics.EmergencyFund
+	if metrics == nil {
+		t.Fatalf("expected emergency fund metrics, got nil")
+	}
+
+	if math.Abs(metrics.AverageMonthlyExpenses-2000) > 1e-6 {
+		t.Fatalf("AverageMonthlyExpenses = %.2f, want 2000", metrics.AverageMonthlyExpenses)
+	}
+	if math.Abs(metrics.TargetAmount-12000) > 1e-6 {
+		t.Fatalf("TargetAmount = %.2f, want 12000", metrics.TargetAmount)
+	}
+	if math.Abs(metrics.FundedMonths-6) > 1e-6 {
+		t.Fatalf("FundedMonths = %.2f, want 6", metrics.FundedMonths)
+	}
+	if metrics.Shortfall != 0 {
+		t.Fatalf("Shortfall = %.2f, want 0", metrics.Shortfall)
+	}
+	if metrics.Surplus != 0 {
+		t.Fatalf("Surplus = %.2f, want 0", metrics.Surplus)
+	}
+
+	conf.Recommendations.EmergencyFundMonths = 0
+	results, err = GetForecastWithFixedTime(logger, conf, fixedTime)
+	if err != nil {
+		t.Fatalf("GetForecastWithFixedTime() (disabled) error = %v", err)
+	}
+	if results[0].Metrics.EmergencyFund != nil {
+		t.Fatalf("expected emergency fund metrics to be nil when disabled")
 	}
 }

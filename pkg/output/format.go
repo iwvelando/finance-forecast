@@ -59,6 +59,7 @@ func PrettyFormat(results []forecast.Forecast) {
 	// Format output with liquid and total columns
 	for _, scenario := range results {
 		fmt.Printf("--- Results for scenario %s ---\n", scenario.Name)
+		printEmergencyFundSummary(scenario.Metrics.EmergencyFund)
 		fmt.Printf("Date    | Liquid Net Worth | Total Net Worth | Notes\n")
 		fmt.Printf("____    | ________________ | _______________ | _____\n")
 
@@ -81,6 +82,25 @@ func PrettyFormat(results []forecast.Forecast) {
 		}
 		fmt.Println() // Extra blank line between scenarios
 	}
+}
+
+func printEmergencyFundSummary(ef *forecast.EmergencyFundRecommendation) {
+	if ef == nil {
+		return
+	}
+	formattedTarget := formatCurrency(ef.TargetAmount)
+	formattedAverage := formatCurrency(ef.AverageMonthlyExpenses)
+	line := fmt.Sprintf("Emergency fund target (%.1f months): $%s", ef.TargetMonths, formattedTarget)
+	line += fmt.Sprintf(" | Avg monthly expenses: $%s", formattedAverage)
+	if ef.FundedMonths > 0 {
+		line += fmt.Sprintf(" | Starting coverage: %.1f months", ef.FundedMonths)
+	}
+	if ef.Shortfall > 0 {
+		line += fmt.Sprintf(" | Shortfall: $%s", formatCurrency(ef.Shortfall))
+	} else if ef.Surplus > 0 {
+		line += fmt.Sprintf(" | Surplus: $%s", formatCurrency(ef.Surplus))
+	}
+	fmt.Println(line)
 }
 
 // CsvFormat outputs in comma-separated value format.

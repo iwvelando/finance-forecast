@@ -11,6 +11,7 @@ type Investment struct {
 	StartingValue         float64 `yaml:"startingValue,omitempty"`
 	AnnualReturnRate      float64 `yaml:"annualReturnRate,omitempty"`
 	TaxRate               float64 `yaml:"taxRate,omitempty"`
+	WithdrawalTaxRate     float64 `yaml:"withdrawalTaxRate,omitempty"`
 	ContributionsFromCash bool    `yaml:"contributionsFromCash,omitempty"`
 	Contributions         []Event `yaml:"contributions,omitempty"`
 	Withdrawals           []Event `yaml:"withdrawals,omitempty"`
