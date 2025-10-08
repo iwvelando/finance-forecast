@@ -27,10 +27,11 @@ var staticFiles embed.FS
 type handler struct {
 	logger        *zap.Logger
 	maxUploadSize int64
+	version       string
 }
 
 // NewHandler constructs the HTTP handler that serves the web UI and forecast API.
-func NewHandler(logger *zap.Logger, maxUploadSize int64) http.Handler {
+func NewHandler(logger *zap.Logger, maxUploadSize int64, version string) http.Handler {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -39,7 +40,12 @@ func NewHandler(logger *zap.Logger, maxUploadSize int64) http.Handler {
 		maxUploadSize = constants.DefaultMaxUploadSizeBytes
 	}
 
-	h := &handler{logger: logger, maxUploadSize: maxUploadSize}
+	trimmedVersion := strings.TrimSpace(version)
+	if trimmedVersion == "" {
+		trimmedVersion = "dev"
+	}
+
+	h := &handler{logger: logger, maxUploadSize: maxUploadSize, version: trimmedVersion}
 
 	mux := http.NewServeMux()
 
@@ -51,6 +57,9 @@ func NewHandler(logger *zap.Logger, maxUploadSize int64) http.Handler {
 
 	// Config serialization endpoint for editor downloads
 	mux.HandleFunc("/api/editor/export", h.handleConfigExport)
+
+	// Version endpoint for UI metadata
+	mux.HandleFunc("/api/version", h.handleVersion)
 
 	// Static assets (web UI)
 	sub, err := fs.Sub(staticFiles, "static")
@@ -148,6 +157,17 @@ func (h *handler) handleForecast(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.runForecast(w, configBytes, configMap, start, "server.handleForecast")
+}
+
+func (h *handler) handleVersion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]string{
+		"version": h.version,
+	})
 }
 
 func (h *handler) handleForecastEditor(w http.ResponseWriter, r *http.Request) {

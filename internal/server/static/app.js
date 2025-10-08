@@ -26,6 +26,8 @@ const downloadConfigButton = document.getElementById("download-config-button");
 const resetConfigButton = document.getElementById("reset-config-button");
 const editorLoading = document.getElementById("editor-loading");
 const tablistContainer = document.querySelector(".tablist-container");
+const versionFooter = document.getElementById("workspace-footer");
+const versionLabel = document.getElementById("app-version-label");
 if (configPanel) {
 	configPanel.classList.add("sticky-headers");
 }
@@ -162,6 +164,7 @@ window.addEventListener("resize", scheduleChartRerender);
 
 initializeWorkspace();
 initializeThemeControls();
+initializeVersionFooter();
 
 function toggleEditorLoading(isLoading) {
 	isEditorLoading = isLoading;
@@ -1906,20 +1909,72 @@ function createSection(title, description) {
 	return { section, body };
 }
 
+function generateDuplicateScenarioName(originalName) {
+	const fallback = "Scenario";
+	const trimmedOriginal = typeof originalName === "string" ? originalName.trim() : "";
+	const baseName = trimmedOriginal !== "" ? trimmedOriginal : fallback;
+	const existingNames = new Set(
+		(Array.isArray(currentConfig?.scenarios) ? currentConfig.scenarios : []).map((scenario) =>
+			typeof scenario?.name === "string" ? scenario.name.trim().toLowerCase() : "",
+		),
+	);
+	let suffix = 1;
+	let candidate;
+	do {
+		candidate = suffix === 1 ? `${baseName} copy` : `${baseName} copy ${suffix}`;
+		suffix += 1;
+	} while (existingNames.has(candidate.trim().toLowerCase()));
+	return candidate;
+}
+
+
 function createScenarioCard(scenario, index) {
 	const card = document.createElement("div");
 	card.className = "editor-card";
 
+	const duplicateScenario = () => {
+		if (!Array.isArray(currentConfig?.scenarios)) {
+			return;
+		}
+		const original = currentConfig.scenarios[index];
+		if (!original) {
+			return;
+		}
+		const clone = cloneDeep(original) || createEmptyScenario();
+		clone.name = generateDuplicateScenarioName(original.name);
+		currentConfig.scenarios.splice(index + 1, 0, clone);
+		renderConfigEditor();
+		switchTab("config");
+	};
+
+	const removeScenario = () => {
+		if (!Array.isArray(currentConfig?.scenarios) || currentConfig.scenarios.length <= 1) {
+			return;
+		}
+		currentConfig.scenarios.splice(index, 1);
+		renderConfigEditor();
+	};
+
+	const canRemoveScenario = Array.isArray(currentConfig?.scenarios) && currentConfig.scenarios.length > 1;
+
 	const { header, title } = createCardHeader(
 		scenario.name || `Scenario ${index + 1}`,
-		currentConfig.scenarios.length > 1
-			? () => {
-				  currentConfig.scenarios.splice(index, 1);
-				  renderConfigEditor();
-			  }
-		: null,
+		removeScenario,
 		"Remove scenario",
-		{ extraClass: "scenario-card-header" },
+		{
+			extraClass: "scenario-card-header",
+			extraActions: [
+				{
+					label: "Duplicate",
+					onClick: duplicateScenario,
+					tooltip: "Make a copy of this scenario",
+					variant: "secondary",
+				},
+			],
+			removeTooltip: "Remove scenario",
+			removeDisabled: !canRemoveScenario,
+			removeDisabledTooltip: "At least one scenario must remain.",
+		},
 	);
 
 	card.appendChild(header);
@@ -1969,6 +2024,9 @@ function createScenarioCard(scenario, index) {
 function createEventCollection(events, basePath, options = {}) {
 	const container = document.createElement("div");
 	container.className = "editor-subsection";
+	if (options.headingClass && options.headingClass.indexOf("sticky-heading") !== -1) {
+		container.classList.add("sticky-heading-container");
+	}
 
 	if (options.heading) {
 		const heading = document.createElement("h4");
@@ -2558,14 +2616,52 @@ function createCardHeader(titleText, onRemove, removeLabel, options = {}) {
 	title.textContent = titleText;
 	header.appendChild(title);
 
-	if (typeof onRemove === "function") {
+	const extraActions = Array.isArray(options.extraActions) ? options.extraActions : [];
+	const shouldRenderActions = typeof onRemove === "function" || extraActions.length > 0;
+	if (shouldRenderActions) {
 		const actions = document.createElement("div");
 		actions.className = "editor-inline-actions";
-		const removeButton = document.createElement("button");
-		removeButton.type = "button";
-		removeButton.textContent = removeLabel || "Remove";
-		removeButton.addEventListener("click", onRemove);
-		actions.appendChild(removeButton);
+		extraActions.forEach((action) => {
+			if (!action || typeof action.onClick !== "function") {
+				return;
+			}
+			const button = document.createElement("button");
+			button.type = "button";
+			button.textContent = action.label || "Action";
+			button.classList.add("editor-inline-actions__button");
+			if (action.tooltip) {
+				button.title = action.tooltip;
+			}
+			if (action.variant) {
+				button.classList.add(`editor-inline-actions__button--${action.variant}`);
+			}
+			if (action.disabled) {
+				button.disabled = true;
+				if (action.disabledTooltip) {
+					button.title = action.disabledTooltip;
+				}
+				button.setAttribute("aria-disabled", "true");
+			} else {
+				button.addEventListener("click", action.onClick);
+			}
+			actions.appendChild(button);
+		});
+		if (typeof onRemove === "function") {
+			const removeButton = document.createElement("button");
+			removeButton.type = "button";
+			removeButton.textContent = removeLabel || "Remove";
+			removeButton.classList.add("editor-inline-actions__button", "editor-inline-actions__button--danger");
+			const removeTooltip = options.removeTooltip || removeLabel || "Remove";
+			if (options.removeDisabled) {
+				removeButton.disabled = true;
+				removeButton.setAttribute("aria-disabled", "true");
+				removeButton.title = options.removeDisabledTooltip || removeTooltip;
+			} else {
+				removeButton.title = removeTooltip;
+				removeButton.addEventListener("click", onRemove);
+			}
+			actions.appendChild(removeButton);
+		}
 		header.appendChild(actions);
 	}
 
@@ -3621,4 +3717,25 @@ function getContainerByPath(root, segments, createMissing) {
 	}
 
 	return { container: current, key: segments[segments.length - 1] };
+}
+
+async function initializeVersionFooter() {
+	if (!versionFooter || !versionLabel) {
+		return;
+	}
+
+	try {
+		const response = await fetch("/api/version", { cache: "no-store" });
+		if (!response.ok) {
+			throw new Error(`unexpected status ${response.status}`);
+		}
+		const data = await response.json();
+		const rawVersion = data && typeof data.version === "string" ? data.version.trim() : "";
+		if (rawVersion !== "") {
+			versionLabel.textContent = `Version ${rawVersion}`;
+			versionFooter.classList.remove("hidden");
+		}
+	} catch (error) {
+		console.warn("Unable to load application version.", error);
+	}
 }

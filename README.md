@@ -25,6 +25,7 @@ When running in server mode:
 - Visit `http://localhost:8080` (or your chosen address) to open the UI
 - Upload a YAML configuration to run the simulation
 - Review the rendered results table and download the generated CSV without touching the CLI
+- Find the build identifier in the footer of the Planning workspace for quick environment checks
 - Provide `--config` if you want to reuse logging settings from a file
 - Adjust runtime settings (address, upload limits, logging) using `server-config.yaml` (copy from `server-config.yaml.example`). Upload limits accept human-friendly units like `256K`, `10M`, or `1G`. Configure structured logging with `logging.level`, `logging.format`, and `logging.outputFile`. CLI flags such as `--addr`, `--max-upload`, and `--server-config` override or choose the configuration file when needed, while `--log-level` still wins over file settings.
 
@@ -33,6 +34,7 @@ When running in server mode:
 - `--output-format`: Override output format: `pretty` (default) or `csv`
 - `--log-level`: Override logging level (takes precedence over config and server-config settings)
 - `--serve`: Start the web UI server instead of running the CLI simulation
+- `--version`: Print the build identifier (populated via `-ldflags "-X main.version=<value>"`) and exit
 - `--addr`: Bind address for the web UI server (overrides server config)
 - `--server-config`: Path to the server configuration file (default `server-config.yaml`)
 - `--max-upload`: Maximum upload size in bytes for YAML configs (overrides server config)

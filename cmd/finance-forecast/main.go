@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
@@ -18,6 +19,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+var version = "dev"
 
 // initializeLogger creates a zap logger based on configuration and CLI override
 func initializeLogger(loggingConfig config.LoggingConfig, logLevelOverride string) (*zap.Logger, error) {
@@ -97,7 +100,13 @@ func main() {
 	maxUpload := flag.String("max-upload", "", "maximum upload size (e.g. 256K, 10M) overriding server config")
 	serverConfigPath := flag.String("server-config", constants.DefaultServerConfigFile, "path to server configuration file")
 	emergencyMonthsFlag := flag.String("emergency-months", "", "override emergency fund recommendation duration in months (e.g. 6). Set to 0 to disable recommendations.")
+	showVersion := flag.Bool("version", false, "print application version and exit")
 	flag.Parse()
+
+	if showVersion != nil && *showVersion {
+		fmt.Println(getAppVersion())
+		return
+	}
 
 	var emergencyMonthsOverride *float64
 	if *emergencyMonthsFlag != "" {
@@ -248,16 +257,26 @@ func runServer(addr string, maxUpload string, serverConfigPath string, configPat
 		_ = logger.Sync()
 	}()
 
+	appVersion := getAppVersion()
 	logger.Info("starting finance-forecast web server",
 		zap.String("addr", srvCfg.Address),
 		zap.Int64("max_upload_bytes", srvCfg.UploadSizeBytes()),
+		zap.String("version", appVersion),
 	)
 
-	handler := server.NewHandler(logger, srvCfg.UploadSizeBytes())
+	handler := server.NewHandler(logger, srvCfg.UploadSizeBytes(), appVersion)
 	if err := http.ListenAndServe(srvCfg.Address, handler); err != nil {
 		logger.Fatal("server encountered an error",
 			zap.String("op", "serve"),
 			zap.Error(err),
 		)
 	}
+}
+
+func getAppVersion() string {
+	trimmed := strings.TrimSpace(version)
+	if trimmed == "" {
+		return "dev"
+	}
+	return trimmed
 }

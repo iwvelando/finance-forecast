@@ -17,7 +17,7 @@ import (
 )
 
 func TestHandleForecastSuccess(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -79,7 +79,7 @@ func TestHandleForecastSuccess(t *testing.T) {
 }
 
 func TestHandleForecastEditorSuccess(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	configPath := filepath.Join("..", "..", "test", "test_config.yaml")
 	data, err := os.ReadFile(configPath)
@@ -121,7 +121,7 @@ func TestHandleForecastEditorSuccess(t *testing.T) {
 }
 
 func TestHandleConfigExport(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	payload := map[string]interface{}{
 		"scenarios": []interface{}{
@@ -194,8 +194,29 @@ func TestHandleConfigExport(t *testing.T) {
 	}
 }
 
+func TestVersionEndpoint(t *testing.T) {
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if payload["version"] != "test-version" {
+		t.Fatalf("expected version to be test-version, got %q", payload["version"])
+	}
+}
+
 func TestHandleForecastMethodNotAllowed(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forecast", nil)
 	rr := httptest.NewRecorder()
@@ -208,7 +229,7 @@ func TestHandleForecastMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleForecastUploadTooLarge(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), 64)
+	handler := NewHandler(zap.NewNop(), 64, "test-version")
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -245,7 +266,7 @@ func TestHandleForecastUploadTooLarge(t *testing.T) {
 }
 
 func TestHandleForecastMissingFile(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -273,7 +294,7 @@ func TestHandleForecastMissingFile(t *testing.T) {
 }
 
 func TestHandleForecastInvalidYAML(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	rr := performUpload(t, handler, "common: [", "config.yaml")
 
@@ -291,7 +312,7 @@ func TestHandleForecastInvalidYAML(t *testing.T) {
 }
 
 func TestHandleForecastDateParseFailure(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	configYAML := `
 common:
@@ -322,7 +343,7 @@ scenarios:
 }
 
 func TestHandleForecastProcessLoansFailure(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	configYAML := `
 common:
@@ -351,7 +372,7 @@ scenarios:
 }
 
 func TestStaticAssetsServed(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes)
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
