@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	"github.com/iwvelando/finance-forecast/pkg/optimization"
 )
 
 // Simple temporary implementation to get tests passing
@@ -100,6 +101,51 @@ func TestPrettyFormatEmergencyFundSummary(t *testing.T) {
 	}
 	if !strings.Contains(output, "Shortfall: $1,000.00") {
 		t.Fatalf("expected shortfall detail in summary")
+	}
+}
+
+func TestPrettyFormatOptimizationSummary(t *testing.T) {
+	results := []forecast.Forecast{
+		{
+			Name:   "Scenario A",
+			Data:   map[string]float64{"2025-01": 1000},
+			Liquid: map[string]float64{"2025-01": 800},
+			Metrics: forecast.ForecastMetrics{
+				Optimizations: []optimization.Summary{
+					{
+						TargetName:  "New Job",
+						Field:       "amount",
+						Original:    2000,
+						Value:       1200,
+						Floor:       15000,
+						MinimumCash: 15500,
+						Headroom:    500,
+						Iterations:  6,
+						Converged:   true,
+					},
+				},
+			},
+		},
+	}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	PrettyFormat(results)
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	if !strings.Contains(output, "Optimization adjustments:") {
+		t.Fatalf("expected optimization header in output, got %q", output)
+	}
+	if !strings.Contains(output, "New Job (amount)") {
+		t.Fatalf("expected optimization detail line, got %q", output)
 	}
 }
 

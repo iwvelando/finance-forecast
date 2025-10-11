@@ -1,5 +1,6 @@
 const messageEl = document.getElementById("message");
 const warningsEl = document.getElementById("warnings");
+const workspacePanel = document.getElementById("workspace-panel");
 const resultsPanel = document.getElementById("results-section");
 const configPanel = document.getElementById("config-panel");
 const tableHead = document.querySelector("#results-table thead");
@@ -28,6 +29,7 @@ const editorLoading = document.getElementById("editor-loading");
 const tablistContainer = document.querySelector(".tablist-container");
 const versionFooter = document.getElementById("workspace-footer");
 const versionLabel = document.getElementById("app-version-label");
+const optimizerToggleInput = document.getElementById("optimizer-toggle-input");
 if (configPanel) {
 	configPanel.classList.add("sticky-headers");
 }
@@ -68,10 +70,84 @@ let editorPersistTimer = null;
 let editorStorageAvailable = null;
 let editorPersistenceHandlersRegistered = false;
 let chartResizeFrame = null;
+let stickyInlineErrorEl = null;
+let stickyInlineErrorAnchor = null;
 const THEME_STORAGE_KEY = "financeForecast.theme";
 const EDITOR_STORAGE_KEY = "financeForecast.editorState.v1";
 const EDITOR_STORAGE_VERSION = 1;
 const EDITOR_PERSIST_DEBOUNCE_MS = 600;
+const OPTIMIZER_STORAGE_KEY = "financeForecast.optimizerEnabled.v1";
+
+let optimizerEnabled = false;
+
+function loadOptimizerPreference() {
+	if (typeof window === "undefined" || !window.localStorage) {
+		return false;
+	}
+
+	try {
+		const rawValue = window.localStorage.getItem(OPTIMIZER_STORAGE_KEY);
+		if (rawValue === null) {
+			return false;
+		}
+		return rawValue === "1" || rawValue === "true";
+	} catch (error) {
+		console.warn("Unable to read optimizer preference from storage.", error);
+		return false;
+	}
+}
+
+function persistOptimizerPreference(enabled) {
+	if (typeof window === "undefined" || !window.localStorage) {
+		return;
+	}
+
+	try {
+		window.localStorage.setItem(OPTIMIZER_STORAGE_KEY, enabled ? "1" : "0");
+	} catch (error) {
+		console.warn("Unable to persist optimizer preference.", error);
+	}
+}
+
+function updateOptimizerToggleUI() {
+	if (!optimizerToggleInput) {
+		return;
+	}
+
+	optimizerToggleInput.checked = Boolean(optimizerEnabled);
+	optimizerToggleInput.setAttribute("aria-pressed", optimizerEnabled ? "true" : "false");
+	optimizerToggleInput.setAttribute("aria-label", optimizerEnabled ? "Disable optimizer" : "Enable optimizer");
+	rootElement.classList.toggle("optimizer-enabled", optimizerEnabled);
+}
+
+function setOptimizerEnabledState(enabled, options = {}) {
+	const normalized = Boolean(enabled);
+	const { skipRender = false } = options || {};
+	if (optimizerEnabled === normalized) {
+		updateOptimizerToggleUI();
+		return;
+	}
+
+	optimizerEnabled = normalized;
+	persistOptimizerPreference(optimizerEnabled);
+	updateOptimizerToggleUI();
+
+	if (!skipRender) {
+		renderConfigEditor();
+	}
+}
+
+function initializeOptimizerControls() {
+	setOptimizerEnabledState(false, { skipRender: true });
+
+	if (!optimizerToggleInput) {
+		return;
+	}
+
+	optimizerToggleInput.addEventListener("change", () => {
+		setOptimizerEnabledState(optimizerToggleInput.checked);
+	});
+}
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -104,6 +180,440 @@ const CHART_TOOLTIP_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 	month: "long",
 	year: "numeric",
 });
+
+const OPTIMIZER_FIELD_OPTIONS = [
+	{ label: "Amount", value: "amount" },
+	{ label: "Frequency", value: "frequency" },
+	{ label: "Start date", value: "startDate" },
+	{ label: "End date", value: "endDate" },
+];
+
+const OPTIMIZER_FIELD_DESCRIPTIONS = {
+	amount: "Adjust this event's amount to keep cash at or above the emergency-fund floor once achieved.",
+	frequency: "Adjust how often this event recurs to help maintain the emergency-fund floor.",
+	startDate: "Adjust when this event begins to align cash flow with the emergency-fund floor.",
+	endDate: "Adjust when this event ends to maintain the emergency-fund floor.",
+};
+
+const NET_WORTH_METRIC_LABELS = {
+	total: "Total net worth",
+	liquid: "Liquid net worth",
+	amount: "Net worth",
+};
+
+const OPTIMIZER_FIELD_CANONICAL = {
+	amount: "amount",
+	frequency: "frequency",
+	startdate: "startDate",
+	"start-date": "startDate",
+	start_date: "startDate",
+	enddate: "endDate",
+	"end-date": "endDate",
+	end_date: "endDate",
+};
+
+function formatSummaryCurrency(value) {
+	return typeof value === "number" && Number.isFinite(value) ? SUMMARY_CURRENCY_FORMATTER.format(value) : null;
+}
+
+function getNetWorthMetricLabel(metric) {
+	if (typeof metric !== "string" || metric === "") {
+		return NET_WORTH_METRIC_LABELS.amount;
+	}
+	return NET_WORTH_METRIC_LABELS[metric] || NET_WORTH_METRIC_LABELS.amount;
+}
+
+function getNegativeNetWorthValue(value) {
+	if (!value || typeof value !== "object") {
+		return null;
+	}
+	const total = typeof value.total === "number" && Number.isFinite(value.total) ? value.total : null;
+	if (total !== null && total < 0) {
+		return { value: total, metric: "total" };
+	}
+	const liquid = typeof value.liquid === "number" && Number.isFinite(value.liquid) ? value.liquid : null;
+	if (liquid !== null && liquid < 0) {
+		return { value: liquid, metric: "liquid" };
+	}
+	const amount = typeof value.amount === "number" && Number.isFinite(value.amount) ? value.amount : null;
+	if (amount !== null && amount < 0) {
+		return { value: amount, metric: "amount" };
+	}
+	return null;
+}
+
+function findNegativeNetWorthSpans(rows, scenarioIndex) {
+	const spans = [];
+	if (!Array.isArray(rows) || rows.length === 0 || typeof scenarioIndex !== "number" || scenarioIndex < 0) {
+		return spans;
+	}
+
+	let activeSpan = null;
+	rows.forEach((row, index) => {
+		const value = Array.isArray(row?.values) ? row.values[scenarioIndex] || {} : {};
+		const candidate = getNegativeNetWorthValue(value);
+		if (candidate) {
+			const { value: negativeValue, metric } = candidate;
+			const dateLabel = typeof row?.date === "string" && row.date.trim() !== "" ? row.date.trim() : `Month ${index + 1}`;
+			if (!activeSpan) {
+				activeSpan = {
+					startIndex: index,
+					endIndex: index,
+					startDate: dateLabel,
+					endDate: dateLabel,
+					length: 1,
+					minValue: negativeValue,
+					metric,
+				};
+			} else {
+				activeSpan.endIndex = index;
+				activeSpan.endDate = dateLabel;
+				activeSpan.length += 1;
+				if (negativeValue < activeSpan.minValue) {
+					activeSpan.minValue = negativeValue;
+				}
+				if (metric === "total" && activeSpan.metric !== "total") {
+					activeSpan.metric = "total";
+				}
+			}
+		} else if (activeSpan) {
+			spans.push(activeSpan);
+			activeSpan = null;
+		}
+	});
+
+	if (activeSpan) {
+		spans.push(activeSpan);
+	}
+
+	return spans;
+}
+
+function calculateNegativeNetWorthSegments(points) {
+	const segments = [];
+	if (!Array.isArray(points) || points.length === 0) {
+		return segments;
+	}
+
+	let start = -1;
+	let segmentMetric = null;
+	points.forEach((point, index) => {
+		const candidate = getNegativeChartValue(point);
+		if (candidate) {
+			if (start === -1) {
+				start = index;
+				segmentMetric = candidate.metric;
+			} else if (candidate.metric === "total" && segmentMetric !== "total") {
+				segmentMetric = "total";
+			}
+		} else if (start !== -1) {
+			segments.push({ startIndex: start, endIndex: index - 1, metric: segmentMetric });
+			start = -1;
+			segmentMetric = null;
+		}
+	});
+
+	if (start !== -1) {
+		segments.push({ startIndex: start, endIndex: points.length - 1, metric: segmentMetric });
+	}
+
+	return segments;
+}
+
+function getNegativeChartValue(point) {
+	if (!point || typeof point !== "object") {
+		return null;
+	}
+	const total = typeof point.total === "number" && Number.isFinite(point.total) ? point.total : null;
+	if (total !== null && total < 0) {
+		return { value: total, metric: "total" };
+	}
+	const liquid = typeof point.liquid === "number" && Number.isFinite(point.liquid) ? point.liquid : null;
+	if (liquid !== null && liquid < 0) {
+		return { value: liquid, metric: "liquid" };
+	}
+	return null;
+}
+
+function calculateSegmentDomainBounds(points, startIndex, endIndex) {
+	if (!Array.isArray(points) || points.length === 0) {
+		return null;
+	}
+	if (typeof startIndex !== "number" || typeof endIndex !== "number" || startIndex < 0 || endIndex < startIndex || endIndex >= points.length) {
+		return null;
+	}
+
+	const startPoint = points[startIndex];
+	const endPoint = points[endIndex];
+	if (!startPoint || !endPoint) {
+		return null;
+	}
+
+	let startTime = startPoint.time;
+	let endTime = endPoint.time;
+
+	if (startIndex > 0 && Number.isFinite(points[startIndex - 1]?.time) && Number.isFinite(startTime)) {
+		startTime = (points[startIndex - 1].time + startTime) / 2;
+	}
+	if (endIndex < points.length - 1 && Number.isFinite(points[endIndex + 1]?.time) && Number.isFinite(endTime)) {
+		endTime = (endPoint.time + points[endIndex + 1].time) / 2;
+	}
+
+	return {
+		startTime,
+		endTime,
+	};
+}
+
+function formatOptimizerDisplay(summary, kind) {
+	if (!summary || (kind !== "original" && kind !== "value")) {
+		return null;
+	}
+
+	if (kind === "original" && typeof summary.originalDisplay === "string" && summary.originalDisplay.trim() !== "") {
+		return summary.originalDisplay.trim();
+	}
+	if (kind === "value" && typeof summary.valueDisplay === "string" && summary.valueDisplay.trim() !== "") {
+		return summary.valueDisplay.trim();
+	}
+
+	const field = typeof summary.field === "string" ? summary.field.toLowerCase() : "amount";
+	const numeric = kind === "original" ? summary.original : summary.value;
+	const numericValue = typeof numeric === "number" && Number.isFinite(numeric) ? numeric : Number(numeric);
+
+	if (!Number.isFinite(numericValue)) {
+		return null;
+	}
+
+	if (field === "" || field === "amount") {
+		return formatSummaryCurrency(numericValue);
+	}
+	if (field === "frequency") {
+		const rounded = Math.round(numericValue);
+		return Number.isFinite(rounded) ? String(rounded) : null;
+	}
+	if (field === "startdate" || field === "enddate") {
+		return formatMonthIndexValue(numericValue);
+	}
+
+	return String(numericValue);
+}
+
+function formatMonthIndexValue(value) {
+	const index = Math.round(value);
+	if (!Number.isFinite(index)) {
+		return null;
+	}
+	const year = Math.trunc(index / 12);
+	const month = (index % 12) + 1;
+	if (!Number.isFinite(year) || !Number.isFinite(month)) {
+		return null;
+	}
+	return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+}
+
+function normalizeOptimizerField(field) {
+	const key = typeof field === "string" ? field.trim().toLowerCase() : "amount";
+	return OPTIMIZER_FIELD_CANONICAL[key] || "amount";
+}
+
+function getOptimizerFieldDescription(field) {
+	const normalized = normalizeOptimizerField(field);
+	return OPTIMIZER_FIELD_DESCRIPTIONS[normalized] || OPTIMIZER_FIELD_DESCRIPTIONS.amount;
+}
+
+function coalesceMonthValue(value, fallback) {
+	if (typeof value === "string" && MONTH_PATTERN.test(value.trim())) {
+		return value.trim();
+	}
+	return fallback;
+}
+
+function getDefaultEventStartMonth(event) {
+	const candidates = [event?.startDate, currentConfig?.startDate, getCurrentMonthValue()];
+	for (const candidate of candidates) {
+		if (typeof candidate === "string" && MONTH_PATTERN.test(candidate.trim())) {
+			return candidate.trim();
+		}
+	}
+	return getCurrentMonthValue();
+}
+
+function getDefaultEventEndMonth(event) {
+	const candidates = [event?.endDate, event?.startDate, currentConfig?.common?.deathDate, currentConfig?.startDate, getCurrentMonthValue()];
+	for (const candidate of candidates) {
+		if (typeof candidate === "string" && MONTH_PATTERN.test(candidate.trim())) {
+			return candidate.trim();
+		}
+	}
+	return getCurrentMonthValue();
+}
+
+function ensureOptimizerDefaults(event, field, options = {}) {
+	const normalized = normalizeOptimizerField(field);
+	if (!event.optimize || typeof event.optimize !== "object") {
+		event.optimize = {};
+	}
+	const optimizer = event.optimize;
+	optimizer.field = normalized;
+
+	const resetBounds = Boolean(options.resetBounds);
+ 	const resetTolerance = Boolean(options.resetTolerance) || resetBounds;
+
+	if (!Number.isFinite(optimizer.maxIterations) || optimizer.maxIterations <= 0) {
+		optimizer.maxIterations = 50;
+	}
+
+	const ensureTolerance = (defaultValue) => {
+		if (resetTolerance || !Number.isFinite(optimizer.tolerance) || optimizer.tolerance <= 0) {
+			optimizer.tolerance = defaultValue;
+		}
+	};
+
+	if (normalized === "amount") {
+		delete optimizer.minDate;
+		delete optimizer.maxDate;
+		const defaultAmount = typeof event.amount === "number" && Number.isFinite(event.amount) ? event.amount : 0;
+		if (resetBounds || !Number.isFinite(optimizer.min)) {
+			optimizer.min = defaultAmount;
+		}
+		if (resetBounds || !Number.isFinite(optimizer.max)) {
+			optimizer.max = defaultAmount;
+		}
+		ensureTolerance(0.01);
+	} else if (normalized === "frequency") {
+		delete optimizer.minDate;
+		delete optimizer.maxDate;
+		const defaultFrequency = typeof event.frequency === "number" && Number.isFinite(event.frequency) && event.frequency > 0
+			? event.frequency
+			: 1;
+		if (resetBounds || !Number.isFinite(optimizer.min)) {
+			optimizer.min = defaultFrequency;
+		}
+		if (resetBounds || !Number.isFinite(optimizer.max)) {
+			optimizer.max = defaultFrequency;
+		}
+		ensureTolerance(1);
+	} else if (normalized === "startDate") {
+		delete optimizer.min;
+		delete optimizer.max;
+		const defaultMin = getDefaultEventStartMonth(event);
+		const defaultMax = getDefaultEventEndMonth(event);
+		const currentMin = typeof optimizer.minDate === "string" ? optimizer.minDate : "";
+		const currentMax = typeof optimizer.maxDate === "string" ? optimizer.maxDate : "";
+		if (resetBounds || !MONTH_PATTERN.test(currentMin.trim())) {
+			optimizer.minDate = coalesceMonthValue(currentMin, defaultMin);
+		}
+		if (resetBounds || !MONTH_PATTERN.test(currentMax.trim())) {
+			optimizer.maxDate = coalesceMonthValue(currentMax, defaultMax);
+		}
+		ensureTolerance(1);
+	} else if (normalized === "endDate") {
+		delete optimizer.min;
+		delete optimizer.max;
+		const defaultMin = getDefaultEventStartMonth(event);
+		const defaultMax = getDefaultEventEndMonth(event);
+		const currentMin = typeof optimizer.minDate === "string" ? optimizer.minDate : "";
+		const currentMax = typeof optimizer.maxDate === "string" ? optimizer.maxDate : "";
+		if (resetBounds || !MONTH_PATTERN.test(currentMin.trim())) {
+			optimizer.minDate = coalesceMonthValue(currentMin, defaultMin);
+		}
+		if (resetBounds || !MONTH_PATTERN.test(currentMax.trim())) {
+			optimizer.maxDate = coalesceMonthValue(currentMax, defaultMax);
+		}
+		ensureTolerance(1);
+	} else {
+		ensureTolerance(0.01);
+	}
+
+	return optimizer;
+}
+
+function getOptimizerFieldMeta(field) {
+	const normalized = normalizeOptimizerField(field);
+	if (normalized === "frequency") {
+		return {
+			minPath: "min",
+			maxPath: "max",
+			minLabel: "Min frequency (months)",
+			maxLabel: "Max frequency (months)",
+			minTooltip: "Smallest frequency, in months, the optimizer will consider.",
+			maxTooltip: "Largest frequency, in months, the optimizer will consider.",
+			inputType: "number",
+			numberKind: "int",
+			step: "1",
+			arrowStep: ARROW_STEP_SMALL,
+			validation: { type: "integer", min: 1, required: true },
+			toleranceLabel: "Tolerance (months)",
+			toleranceTooltip: "Stop when bounds differ by this many months. Leave blank or zero to use the default (1).",
+			toleranceInputType: "number",
+			toleranceNumberKind: "int",
+			toleranceStep: "1",
+			toleranceArrowStep: ARROW_STEP_SMALL,
+			toleranceValidation: { type: "integer", min: 0 },
+		};
+	}
+	if (normalized === "startDate") {
+		return {
+			minPath: "minDate",
+			maxPath: "maxDate",
+			minLabel: "Earliest start date",
+			maxLabel: "Latest start date",
+			minTooltip: "Earliest month the optimizer can consider for the event start date.",
+			maxTooltip: "Latest month the optimizer can consider for the event start date.",
+			inputType: "month",
+			validation: { type: "month", required: true },
+			maxLength: 7,
+			enableNowShortcut: true,
+			toleranceLabel: "Tolerance (months)",
+			toleranceTooltip: "Stop when bounds differ by this many months. Leave blank or zero to use the default (1).",
+			toleranceInputType: "number",
+			toleranceNumberKind: "int",
+			toleranceStep: "1",
+			toleranceArrowStep: ARROW_STEP_SMALL,
+			toleranceValidation: { type: "integer", min: 0 },
+		};
+	}
+	if (normalized === "endDate") {
+		return {
+			minPath: "minDate",
+			maxPath: "maxDate",
+			minLabel: "Earliest end date",
+			maxLabel: "Latest end date",
+			minTooltip: "Earliest month the optimizer can consider for the event end date.",
+			maxTooltip: "Latest month the optimizer can consider for the event end date.",
+			inputType: "month",
+			validation: { type: "month", required: true },
+			maxLength: 7,
+			enableNowShortcut: true,
+			toleranceLabel: "Tolerance (months)",
+			toleranceTooltip: "Stop when bounds differ by this many months. Leave blank or zero to use the default (1).",
+			toleranceInputType: "number",
+			toleranceNumberKind: "int",
+			toleranceStep: "1",
+			toleranceArrowStep: ARROW_STEP_SMALL,
+			toleranceValidation: { type: "integer", min: 0 },
+		};
+	}
+	return {
+		minPath: "min",
+		maxPath: "max",
+		minLabel: "Min amount",
+		maxLabel: "Max amount",
+		minTooltip: "Smallest amount the optimizer will consider during the search.",
+		maxTooltip: "Largest amount the optimizer will consider during the search.",
+		inputType: "number",
+		step: "0.01",
+		arrowStep: ARROW_STEP_LARGE,
+		validation: { type: "number", required: true },
+		toleranceLabel: "Tolerance",
+		toleranceTooltip: "Stop when min and max differ by this amount. Leave blank or zero to use the default (0.01).",
+		toleranceInputType: "number",
+		toleranceStep: "0.01",
+		toleranceArrowStep: ARROW_STEP_SMALL,
+		toleranceValidation: { type: "number", min: 0 },
+	};
+}
 
 function getCurrentMonthValue() {
 	const now = new Date();
@@ -162,6 +672,7 @@ window.addEventListener("resize", updateStickyMetrics);
 window.addEventListener("load", updateStickyMetrics);
 window.addEventListener("resize", scheduleChartRerender);
 
+initializeOptimizerControls();
 initializeWorkspace();
 initializeThemeControls();
 initializeVersionFooter();
@@ -512,6 +1023,7 @@ async function runForecastFromFile(file) {
 			throw new Error(data.error || "Unable to process forecast");
 		}
 
+		setOptimizerEnabledState(false, { skipRender: true });
 		processForecastResponse(data, "Forecast completed successfully.");
 	} catch (error) {
 		console.error("Forecast request failed", error);
@@ -539,18 +1051,149 @@ function processForecastResponse(data, successMessage, options = {}) {
 	if (switchToResults) {
 		switchTab("results");
 	}
+	scrollResultsToTop({ behavior: "auto" });
 	showMessage(successMessage, "success");
 }
 
 function showMessage(message, type) {
-	if (!message) {
+	const trimmedMessage = typeof message === "string" ? message.trim() : "";
+	if (trimmedMessage === "") {
 		messageEl.textContent = "";
 		messageEl.className = "message hidden";
+		clearStickyInlineError();
 		return;
 	}
 
-	messageEl.textContent = message;
-	messageEl.className = type ? `message ${type}` : "message";
+	messageEl.textContent = trimmedMessage;
+	const classes = ["message"];
+	if (type) {
+		classes.push(type);
+	}
+	messageEl.className = classes.join(" ");
+
+	if (type === "error") {
+		if (activeTab === "config") {
+			setStickyInlineError(trimmedMessage);
+		} else {
+			clearStickyInlineError();
+		}
+	} else {
+		clearStickyInlineError();
+	}
+}
+
+function clearStickyInlineError() {
+	if (stickyInlineErrorEl && stickyInlineErrorEl.parentNode) {
+		stickyInlineErrorEl.parentNode.removeChild(stickyInlineErrorEl);
+	}
+	stickyInlineErrorEl = null;
+	stickyInlineErrorAnchor = null;
+}
+
+function findActiveStickyAnchor() {
+	if (!configPanel) {
+		return null;
+	}
+	const selectors = [".sticky-heading", ".scenario-card-header"];
+	const nodes = configPanel.querySelectorAll(selectors.join(", "));
+	if (nodes.length === 0) {
+		return null;
+	}
+	const offset = getNumericCSSValue("--workspace-sticky-offset") + getNumericCSSValue("--config-toolbar-offset");
+	const threshold = 6;
+	let fallback = null;
+	for (const node of nodes) {
+		if (!node.isConnected) {
+			continue;
+		}
+		const rect = node.getBoundingClientRect();
+		if (Number.isNaN(rect.top) || Number.isNaN(rect.bottom)) {
+			continue;
+		}
+		if (Math.abs(rect.top - offset) <= threshold) {
+			return node;
+		}
+		if (!fallback && rect.bottom >= 0) {
+			fallback = node;
+		}
+	}
+	return fallback || nodes[0];
+}
+
+function findFallbackStickyAnchor() {
+	if (!configPanel) {
+		return null;
+	}
+	return configPanel.querySelector(".scenario-card-header, .sticky-heading");
+}
+
+function setStickyInlineError(message) {
+	const trimmed = typeof message === "string" ? message.trim() : "";
+	if (trimmed === "") {
+		clearStickyInlineError();
+		return;
+	}
+	let anchor = stickyInlineErrorAnchor && stickyInlineErrorAnchor.isConnected ? stickyInlineErrorAnchor : null;
+	if (!anchor) {
+		anchor = findActiveStickyAnchor() || findFallbackStickyAnchor();
+	}
+	if (!anchor) {
+		clearStickyInlineError();
+		return;
+	}
+	if (stickyInlineErrorAnchor !== anchor) {
+		clearStickyInlineError();
+		const isHeading = anchor.classList.contains("sticky-heading");
+		const elementTag = isHeading ? "span" : "div";
+		stickyInlineErrorEl = document.createElement(elementTag);
+		stickyInlineErrorEl.className = "sticky-inline-alert sticky-inline-alert--error";
+		stickyInlineErrorEl.setAttribute("role", "alert");
+		stickyInlineErrorEl.setAttribute("aria-live", "assertive");
+		if (isHeading) {
+			anchor.appendChild(stickyInlineErrorEl);
+		} else if (anchor.classList.contains("scenario-card-header")) {
+			const titleEl = anchor.querySelector("h4");
+			if (titleEl) {
+				titleEl.insertAdjacentElement("afterend", stickyInlineErrorEl);
+			} else {
+				anchor.appendChild(stickyInlineErrorEl);
+			}
+		} else {
+			anchor.appendChild(stickyInlineErrorEl);
+		}
+		stickyInlineErrorAnchor = anchor;
+	}
+	if (stickyInlineErrorEl) {
+		stickyInlineErrorEl.textContent = trimmed;
+	}
+}
+
+function getNumericCSSValue(variableName) {
+	if (typeof window === "undefined" || !variableName) {
+		return 0;
+	}
+	const computed = window.getComputedStyle(document.documentElement);
+	const rawValue = computed.getPropertyValue(variableName);
+	const parsed = parseFloat(rawValue);
+	return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function scrollResultsToTop(options = {}) {
+	if (!resultsPanel) {
+		return;
+	}
+
+	const { behavior = "auto" } = options || {};
+	window.requestAnimationFrame(() => {
+		const rect = resultsPanel.getBoundingClientRect();
+		const stickyOffset = getNumericCSSValue("--workspace-sticky-offset");
+		const targetTop = rect.top + window.scrollY - stickyOffset - 16;
+		const clampedTop = Math.max(0, targetTop);
+		window.scrollTo({
+			top: clampedTop,
+			behavior: behavior === "smooth" ? "smooth" : "auto",
+		});
+	});
 }
 
 function clearResultsView() {
@@ -696,12 +1339,14 @@ function renderScenarioTabs() {
 	scenarioTabsEl.classList.remove("hidden");
 }
 
+
+
 function renderScenarioSummary() {
 	if (!resultsSummaryEl) {
 		return;
 	}
 
-	resultsSummaryEl.textContent = "";
+	resultsSummaryEl.innerHTML = "";
 	resultsSummaryEl.classList.add("hidden");
 
 	if (!forecastDataset || !Array.isArray(forecastDataset.scenarios) || forecastDataset.scenarios.length === 0) {
@@ -710,36 +1355,201 @@ function renderScenarioSummary() {
 
 	const scenarioIndex = clampActiveScenarioIndex();
 	const metrics = Array.isArray(forecastDataset.metrics) ? forecastDataset.metrics[scenarioIndex] : null;
-	if (!metrics || !metrics.emergencyFund) {
+	const rows = Array.isArray(forecastDataset.rows) ? forecastDataset.rows : [];
+
+	let hasContent = false;
+
+	const negativeSpans = findNegativeNetWorthSpans(rows, scenarioIndex);
+	if (negativeSpans.length > 0) {
+		const warningBlock = document.createElement("div");
+		warningBlock.className = "results-summary__warning";
+		const heading = document.createElement("div");
+		heading.className = "results-summary__heading results-summary__heading--warning";
+		heading.textContent = "Warning: Net worth below $0";
+		warningBlock.appendChild(heading);
+
+		const list = document.createElement("ul");
+		list.className = "results-summary__list results-summary__list--warning";
+
+		negativeSpans.forEach((span) => {
+			const item = document.createElement("li");
+			item.className = "results-summary__item";
+			const minDisplay = formatSummaryCurrency(span.minValue) || String(span.minValue);
+			const metricLabel = getNetWorthMetricLabel(span.metric);
+			const entryText = span.length === 1
+				? `${metricLabel} dips below zero in ${span.startDate} (low ${minDisplay})`
+				: `${metricLabel} below zero from ${span.startDate} to ${span.endDate} (${span.length} months, low ${minDisplay})`;
+			item.textContent = entryText;
+			list.appendChild(item);
+		});
+
+		warningBlock.appendChild(list);
+		resultsSummaryEl.appendChild(warningBlock);
+		hasContent = true;
+	}
+
+	if (!metrics) {
+		if (hasContent) {
+			resultsSummaryEl.classList.remove("hidden");
+		}
 		return;
 	}
 
-	const ef = metrics.emergencyFund;
-	const parts = [];
-	if (typeof ef.targetMonths === "number") {
-		parts.push(`Emergency fund target (${ef.targetMonths.toFixed(1)} months)`);
-	}
-	if (typeof ef.targetAmount === "number") {
-		parts.push(`Goal: ${SUMMARY_CURRENCY_FORMATTER.format(ef.targetAmount)}`);
-	}
-	if (typeof ef.averageMonthlyExpenses === "number" && ef.averageMonthlyExpenses > 0) {
-		parts.push(`Avg expenses: ${SUMMARY_CURRENCY_FORMATTER.format(ef.averageMonthlyExpenses)}`);
-	}
-	if (typeof ef.fundedMonths === "number" && Number.isFinite(ef.fundedMonths)) {
-		parts.push(`Starting coverage: ${ef.fundedMonths.toFixed(1)} months`);
-	}
-	if (typeof ef.shortfall === "number" && ef.shortfall > 0) {
-		parts.push(`Shortfall: ${SUMMARY_CURRENCY_FORMATTER.format(ef.shortfall)}`);
-	} else if (typeof ef.surplus === "number" && ef.surplus > 0) {
-		parts.push(`Surplus: ${SUMMARY_CURRENCY_FORMATTER.format(ef.surplus)}`);
+	if (metrics.emergencyFund) {
+		const ef = metrics.emergencyFund;
+		const parts = [];
+		if (typeof ef.targetMonths === "number" && Number.isFinite(ef.targetMonths)) {
+			parts.push(`Emergency fund target (${ef.targetMonths.toFixed(1)} months)`);
+		}
+		if (typeof ef.targetAmount === "number" && Number.isFinite(ef.targetAmount)) {
+			parts.push(`Goal: ${SUMMARY_CURRENCY_FORMATTER.format(ef.targetAmount)}`);
+		}
+		if (typeof ef.averageMonthlyExpenses === "number" && ef.averageMonthlyExpenses > 0) {
+			parts.push(`Avg expenses: ${SUMMARY_CURRENCY_FORMATTER.format(ef.averageMonthlyExpenses)}`);
+		}
+		if (typeof ef.fundedMonths === "number" && Number.isFinite(ef.fundedMonths)) {
+			parts.push(`Starting coverage: ${ef.fundedMonths.toFixed(1)} months`);
+		}
+		if (typeof ef.shortfall === "number" && ef.shortfall > 0) {
+			parts.push(`Shortfall: ${SUMMARY_CURRENCY_FORMATTER.format(ef.shortfall)}`);
+		} else if (typeof ef.surplus === "number" && ef.surplus > 0) {
+			parts.push(`Surplus: ${SUMMARY_CURRENCY_FORMATTER.format(ef.surplus)}`);
+		}
+
+		if (parts.length > 0) {
+			const efBlock = document.createElement("div");
+			efBlock.className = "results-summary__emergency";
+			const heading = document.createElement("div");
+			heading.className = "results-summary__heading";
+			heading.textContent = "Emergency fund summary";
+			efBlock.appendChild(heading);
+
+			const list = document.createElement("ul");
+			list.className = "results-summary__list";
+			const item = document.createElement("li");
+			const description = document.createElement("div");
+			description.className = "results-summary__item";
+			description.textContent = parts.join(" • ");
+			item.appendChild(description);
+			list.appendChild(item);
+			efBlock.appendChild(list);
+			resultsSummaryEl.appendChild(efBlock);
+			hasContent = true;
+		}
 	}
 
-	if (parts.length === 0) {
-		return;
+	const optimizations = Array.isArray(metrics.optimizations) ? metrics.optimizations : [];
+	if (optimizations.length > 0) {
+		const convergedSummaries = optimizations.filter((summary) => summary && summary.converged);
+		const incompleteSummaries = optimizations.filter((summary) => summary && !summary.converged);
+
+		if (convergedSummaries.length > 0) {
+			const optimizerBlock = document.createElement("div");
+			optimizerBlock.className = "results-summary__optimizer";
+			const heading = document.createElement("div");
+			heading.className = "results-summary__heading";
+			heading.textContent = convergedSummaries.length === 1 ? "Optimizer adjustment" : "Optimizer adjustments";
+			optimizerBlock.appendChild(heading);
+
+			const list = document.createElement("ul");
+			list.className = "results-summary__list";
+
+			convergedSummaries.forEach((summary) => {
+				const item = document.createElement("li");
+				const description = document.createElement("div");
+				description.className = "results-summary__item";
+				const eventLabel = typeof summary.targetName === "string" && summary.targetName.trim() !== "" ? summary.targetName.trim() : "Event";
+				const fieldLabel = typeof summary.field === "string" && summary.field.trim() !== "" ? summary.field.trim() : "amount";
+				const label = fieldLabel.toLowerCase() === "amount" ? eventLabel : `${eventLabel} (${fieldLabel})`;
+				const originalValue = formatOptimizerDisplay(summary, "original");
+				const optimizedValue = formatOptimizerDisplay(summary, "value");
+				const parts = [label];
+				if (originalValue && optimizedValue) {
+					parts.push(`${originalValue} → ${optimizedValue}`);
+				}
+				description.textContent = parts.join(" • ");
+				item.appendChild(description);
+
+				const detailParts = [];
+				if (typeof summary.floor === "number" && Number.isFinite(summary.floor)) {
+					detailParts.push(`Cash floor: ${formatSummaryCurrency(summary.floor)}`);
+				}
+				if (typeof summary.minimumCash === "number" && Number.isFinite(summary.minimumCash)) {
+					detailParts.push(`Minimum cash: ${formatSummaryCurrency(summary.minimumCash)}`);
+				}
+				if (typeof summary.headroom === "number" && Number.isFinite(summary.headroom)) {
+					detailParts.push(`Headroom: ${formatSummaryCurrency(summary.headroom)}`);
+				}
+				if (typeof summary.iterations === "number" && summary.iterations > 0) {
+					detailParts.push(`Iterations: ${summary.iterations}`);
+				}
+				if (detailParts.length > 0) {
+					const details = document.createElement("div");
+					details.className = "results-summary__notes muted-text";
+					details.textContent = detailParts.join(" • ");
+					item.appendChild(details);
+				}
+
+				list.appendChild(item);
+			});
+
+			optimizerBlock.appendChild(list);
+			resultsSummaryEl.appendChild(optimizerBlock);
+			hasContent = true;
+		}
+
+		if (incompleteSummaries.length > 0) {
+			const warningBlock = document.createElement("div");
+			warningBlock.className = "results-summary__optimizer";
+			const heading = document.createElement("div");
+			heading.className = "results-summary__heading";
+			heading.textContent = "Optimizer notes";
+			warningBlock.appendChild(heading);
+
+			const list = document.createElement("ul");
+			list.className = "results-summary__list";
+
+			incompleteSummaries.forEach((summary) => {
+				const item = document.createElement("li");
+				const description = document.createElement("div");
+				description.className = "results-summary__item";
+				const eventLabel = typeof summary.targetName === "string" && summary.targetName.trim() !== "" ? summary.targetName.trim() : "Event";
+				const fieldLabel = typeof summary.field === "string" && summary.field.trim() !== "" ? summary.field.trim() : "amount";
+				const label = fieldLabel.toLowerCase() === "amount" ? eventLabel : `${eventLabel} (${fieldLabel})`;
+				const originalValue = formatOptimizerDisplay(summary, "original");
+				const attemptedValue = formatOptimizerDisplay(summary, "value");
+				const parts = [label];
+				if (originalValue && attemptedValue) {
+					parts.push(`${originalValue} → ${attemptedValue}`);
+				}
+				description.textContent = parts.join(" • ");
+				item.appendChild(description);
+
+				const notes = Array.isArray(summary.notes)
+					? summary.notes
+						.map((note) => (typeof note === "string" ? note.trim() : ""))
+						.filter((note) => note !== "")
+					: [];
+				const notesEl = document.createElement("div");
+				notesEl.className = "results-summary__notes muted-text";
+				if (notes.length > 0) {
+					notesEl.textContent = notes.join(" • ");
+				} else {
+					notesEl.textContent = "Unable to reach the emergency fund floor within the configured bounds.";
+				}
+				item.appendChild(notesEl);
+				list.appendChild(item);
+			});
+
+			warningBlock.appendChild(list);
+			resultsSummaryEl.appendChild(warningBlock);
+			hasContent = true;
+		}
 	}
 
-	resultsSummaryEl.textContent = parts.join(" • ");
-	resultsSummaryEl.classList.remove("hidden");
+	if (hasContent) {
+		resultsSummaryEl.classList.remove("hidden");
+	}
 }
 
 function renderScenarioChart() {
@@ -945,6 +1755,77 @@ function renderScenarioChart() {
 		}
 	}
 
+	const negativeSegments = calculateNegativeNetWorthSegments(sortedPoints);
+	negativeSegments.forEach(({ startIndex, endIndex, metric }) => {
+		if (typeof startIndex !== "number" || typeof endIndex !== "number" || startIndex < 0 || endIndex < startIndex) {
+			return;
+		}
+		if (startIndex === endIndex) {
+			const point = sortedPoints[startIndex];
+			const x = point ? xScale(point.time) : NaN;
+			if (Number.isFinite(x)) {
+				const markerClasses = ["chart-negative-marker"];
+				if (metric) {
+					markerClasses.push(`chart-negative-marker--${metric}`);
+				}
+				const markerAttributes = {
+					class: markerClasses.join(" "),
+					x1: x,
+					x2: x,
+					y1: plotTopY,
+					y2: plotBottomY,
+				};
+				if (metric) {
+					markerAttributes["data-metric"] = metric;
+				}
+				const marker = createSvgElement("line", markerAttributes);
+				bandsGroup.appendChild(marker);
+			}
+			return;
+		}
+		const bounds = calculateSegmentDomainBounds(sortedPoints, startIndex, endIndex);
+		if (!bounds) {
+			return;
+		}
+		const xStart = xScale(bounds.startTime);
+		const xEnd = xScale(bounds.endTime);
+		if (!Number.isFinite(xStart) || !Number.isFinite(xEnd)) {
+			return;
+		}
+		const width = Math.abs(xEnd - xStart);
+		if (width < 1) {
+			const midPoint = sortedPoints[startIndex];
+			const midX = midPoint ? xScale(midPoint.time) : NaN;
+			if (Number.isFinite(midX)) {
+				const marker = createSvgElement("line", {
+					class: "chart-negative-marker",
+					x1: midX,
+					x2: midX,
+					y1: plotTopY,
+					y2: plotBottomY,
+				});
+				bandsGroup.appendChild(marker);
+			}
+			return;
+		}
+		const rectClasses = ["chart-negative-period"];
+		if (metric) {
+			rectClasses.push(`chart-negative-period--${metric}`);
+		}
+		const rectAttributes = {
+			class: rectClasses.join(" "),
+			x: Math.min(xStart, xEnd),
+			y: plotTopY,
+			width,
+			height: plotHeight,
+		};
+		if (metric) {
+			rectAttributes["data-metric"] = metric;
+		}
+		const rect = createSvgElement("rect", rectAttributes);
+		bandsGroup.appendChild(rect);
+	});
+
 	const yTicks = generateLinearTicks(yMin, yMax, 5);
 	yTicks.forEach((tick) => {
 		if (!Number.isFinite(tick)) {
@@ -1140,6 +2021,11 @@ function renderScenarioTable() {
 			: typeof value.amount === "number"
 				? value.amount
 				: null;
+		const hasNegative = (typeof liquidAmount === "number" && liquidAmount < 0)
+			|| (typeof totalAmount === "number" && totalAmount < 0);
+		if (hasNegative) {
+			tr.classList.add("results-row--negative");
+		}
 		const liquidValue = liquidAmount !== null ? currencyFormatter.format(liquidAmount) : noValueMarkup;
 		const totalValue = totalAmount !== null ? currencyFormatter.format(totalAmount) : noValueMarkup;
 
@@ -1783,6 +2669,7 @@ function normalizeScenario(scenario) {
 
 function renderConfigEditor() {
 	closeActiveHelpTooltip();
+	clearStickyInlineError();
 	configEditorRoot.innerHTML = "";
 	registeredInputs = [];
 
@@ -2074,6 +2961,159 @@ function createEventCollection(events, basePath, options = {}) {
 	return container;
 }
 
+function createEventOptimizerSection(event, basePath, options = {}) {
+	if (options.allowOptimizer === false) {
+		return null;
+	}
+	if (typeof basePath !== "string" || !basePath.startsWith("scenarios[")) {
+		return null;
+	}
+
+	const section = document.createElement("div");
+	section.className = "editor-optimizer";
+	if (!optimizerEnabled) {
+		section.classList.add("editor-optimizer--global-disabled");
+	}
+
+	const header = document.createElement("div");
+	header.className = "editor-optimizer__header";
+	const heading = document.createElement("h5");
+	heading.textContent = "Optimizer";
+	header.appendChild(heading);
+
+	const toggleLabel = document.createElement("label");
+	toggleLabel.className = "editor-optimizer__toggle";
+	toggleLabel.title = "Allow the optimizer to adjust this event automatically.";
+	const toggleInput = document.createElement("input");
+	toggleInput.type = "checkbox";
+	const hasOptimizer = Boolean(event && typeof event.optimize === "object");
+	toggleInput.checked = hasOptimizer;
+	toggleInput.disabled = !optimizerEnabled;
+	toggleLabel.appendChild(toggleInput);
+	const toggleText = document.createElement("span");
+	toggleText.textContent = "Enable";
+	toggleLabel.appendChild(toggleText);
+	header.appendChild(toggleLabel);
+	section.appendChild(header);
+
+	const statusEl = document.createElement("p");
+	statusEl.className = "muted-text editor-optimizer__status";
+	section.appendChild(statusEl);
+
+	let optimizerConfig = null;
+	let normalizedField = "amount";
+
+	if (!optimizerEnabled) {
+		statusEl.textContent = "Turn on Run optimizer in the toolbar to adjust this event automatically.";
+	} else if (hasOptimizer) {
+		normalizedField = normalizeOptimizerField(event.optimize && event.optimize.field ? event.optimize.field : "amount");
+		optimizerConfig = ensureOptimizerDefaults(event, normalizedField);
+		normalizedField = normalizeOptimizerField(optimizerConfig.field);
+		statusEl.textContent = getOptimizerFieldDescription(normalizedField);
+	} else {
+		statusEl.textContent = "Enable the optimizer to adjust this event while keeping cash above the emergency-fund floor.";
+	}
+
+	if (optimizerEnabled && optimizerConfig) {
+		const optimizerGrid = document.createElement("div");
+		optimizerGrid.className = "editor-grid editor-optimizer__grid";
+
+		const fieldSelect = createInputField({
+			label: "Parameter",
+			path: `${basePath}.optimize.field`,
+			value: normalizeOptimizerField(optimizerConfig.field || "amount"),
+			inputType: "select",
+			options: OPTIMIZER_FIELD_OPTIONS,
+			tooltip: "Choose which detail the optimizer may adjust for this event.",
+			onChange: (selected) => {
+				const nextField = normalizeOptimizerField(selected);
+				ensureOptimizerDefaults(event, nextField, { resetBounds: true, resetTolerance: true });
+				queuePersistEditorState();
+				renderConfigEditor();
+			},
+		});
+		optimizerGrid.appendChild(fieldSelect);
+
+		const meta = getOptimizerFieldMeta(normalizedField);
+		const minValue = meta.minPath === "minDate"
+			? (typeof optimizerConfig.minDate === "string" ? optimizerConfig.minDate : "")
+			: (Number.isFinite(optimizerConfig.min) ? optimizerConfig.min : "");
+		const maxValue = meta.maxPath === "maxDate"
+			? (typeof optimizerConfig.maxDate === "string" ? optimizerConfig.maxDate : "")
+			: (Number.isFinite(optimizerConfig.max) ? optimizerConfig.max : "");
+
+		optimizerGrid.appendChild(createInputField({
+			label: meta.minLabel,
+			path: `${basePath}.optimize.${meta.minPath}`,
+			value: minValue,
+			inputType: meta.inputType,
+			step: meta.step,
+			arrowStep: meta.arrowStep,
+			numberKind: meta.numberKind,
+			enableNowShortcut: Boolean(meta.enableNowShortcut),
+			tooltip: meta.minTooltip,
+			validation: meta.validation,
+		}));
+
+		optimizerGrid.appendChild(createInputField({
+			label: meta.maxLabel,
+			path: `${basePath}.optimize.${meta.maxPath}`,
+			value: maxValue,
+			inputType: meta.inputType,
+			step: meta.step,
+			arrowStep: meta.arrowStep,
+			numberKind: meta.numberKind,
+			enableNowShortcut: Boolean(meta.enableNowShortcut),
+			tooltip: meta.maxTooltip,
+			validation: meta.validation,
+		}));
+
+		optimizerGrid.appendChild(createInputField({
+			label: meta.toleranceLabel,
+			path: `${basePath}.optimize.tolerance`,
+			value: Number.isFinite(optimizerConfig.tolerance) ? optimizerConfig.tolerance : "",
+			inputType: meta.toleranceInputType,
+			step: meta.toleranceStep,
+			arrowStep: meta.toleranceArrowStep,
+			numberKind: meta.toleranceNumberKind,
+			tooltip: meta.toleranceTooltip,
+			validation: meta.toleranceValidation,
+		}));
+
+		optimizerGrid.appendChild(createInputField({
+			label: "Max iterations",
+			path: `${basePath}.optimize.maxIterations`,
+			value: Number.isFinite(optimizerConfig.maxIterations) ? optimizerConfig.maxIterations : "",
+			inputType: "number",
+			step: "1",
+			arrowStep: ARROW_STEP_SMALL,
+			numberKind: "int",
+			tooltip: "Maximum optimizer solver steps before stopping.",
+			validation: { type: "integer", min: 1 },
+		}));
+
+		section.appendChild(optimizerGrid);
+	}
+
+	toggleInput.addEventListener("change", () => {
+		if (!optimizerEnabled) {
+			toggleInput.checked = false;
+			return;
+		}
+		if (toggleInput.checked) {
+			const nextField = normalizeOptimizerField(event.optimize && event.optimize.field ? event.optimize.field : "amount");
+			ensureOptimizerDefaults(event, nextField, { resetBounds: true, resetTolerance: true });
+			queuePersistEditorState();
+		} else {
+			delete event.optimize;
+			deleteConfigAtPath(`${basePath}.optimize`);
+		}
+		renderConfigEditor();
+	});
+
+	return section;
+}
+
 function createEventCard(event, basePath, index, options = {}, onRemove) {
 	const { titlePrefix = "Event", enableWithdrawalPercentage = false } = options || {};
 
@@ -2241,6 +3281,11 @@ function createEventCard(event, basePath, index, options = {}, onRemove) {
 		applyMode(currentMode);
 	}
 	card.appendChild(grid);
+
+	const optimizerSection = createEventOptimizerSection(event, basePath, options);
+	if (optimizerSection) {
+		card.appendChild(optimizerSection);
+	}
 
 	return card;
 }
@@ -2426,6 +3471,7 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		titlePrefix: "Contribution",
 		addLabel: "Add contribution",
 		emptyMessage: "No contributions scheduled.",
+		allowOptimizer: false,
 		amountTooltip: "Amount contributed each time this event occurs. Enter a positive value; contributions increase this investment's balance.",
 	}));
 
@@ -2435,6 +3481,7 @@ function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove
 		addLabel: "Add withdrawal",
 		emptyMessage: "No withdrawals scheduled.",
 		enableWithdrawalPercentage: true,
+		allowOptimizer: false,
 		createEmptyEvent: createEmptyWithdrawalEvent,
 	}));
 
@@ -2598,6 +3645,7 @@ function createLoanCard(loan, basePath, index, onRemove) {
 		titlePrefix: "Payment",
 		addLabel: "Add extra payment",
 		emptyMessage: "No extra principal payments configured.",
+		allowOptimizer: false,
 		amountTooltip: "Extra payment applied directly to the loan principal each time this event occurs. Enter a positive value to reduce the balance faster.",
 	});
 	card.appendChild(extraPayments);
@@ -3389,6 +4437,9 @@ function switchTab(tabName) {
 	}
 
 	activeTab = tabName;
+	if (activeTab !== "config") {
+		clearStickyInlineError();
+	}
 
 	tabButtons.forEach((button) => {
 		const isActive = button.dataset.tab === tabName;
@@ -3404,9 +4455,9 @@ function switchTab(tabName) {
 
 	updateStickyMetrics();
 
-		if (tabName === "results" && forecastDataset) {
-			renderScenarioChart();
-		}
+	if (tabName === "results" && forecastDataset) {
+		renderScenarioChart();
+	}
 }
 
 async function handleRunForecast() {
@@ -3424,13 +4475,19 @@ async function handleRunForecast() {
 	showMessage("", null);
 
 	try {
-		const payload = buildConfigPayload();
+		const configPayload = buildConfigPayload();
+		const requestBody = {
+			config: configPayload,
+			options: {
+				optimize: Boolean(optimizerEnabled),
+			},
+		};
 		const response = await fetch("/api/editor/forecast", {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify(payload),
+			body: JSON.stringify(requestBody),
 		});
 
 		const data = await response.json();
@@ -3463,6 +4520,7 @@ function handleResetConfig() {
 		URL.revokeObjectURL(configDownloadUrl);
 		configDownloadUrl = null;
 	}
+	setOptimizerEnabledState(false, { skipRender: true });
 	setDataAvailability(false);
 	renderConfigEditor();
 	switchTab("config");
@@ -3667,6 +4725,30 @@ function updateConfigAtPath(path, value, valueType, numberKind) {
 		} else {
 			container[key] = value;
 		}
+	}
+
+	queuePersistEditorState();
+}
+
+function deleteConfigAtPath(path) {
+	if (!currentConfig) {
+		return;
+	}
+
+	const segments = splitPath(path);
+	if (segments.length === 0) {
+		return;
+	}
+
+	const { container, key } = getContainerByPath(currentConfig, segments, false);
+	if (!container || key === undefined || key === null) {
+		return;
+	}
+
+	if (Array.isArray(container) && typeof key === "number") {
+		container.splice(key, 1);
+	} else {
+		delete container[key];
 	}
 
 	queuePersistEditorState();

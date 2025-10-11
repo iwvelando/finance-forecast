@@ -100,6 +100,17 @@ scenarios:
         # endDate: optionally specifies when an event ends; if unspecified the
         # deathDate is the end.
         endDate: 2050-01
+      - name: Transition income
+        amount: 2000.00
+        startDate: 2050-02
+        frequency: 1
+        # Optional optimizer: run the CLI with --optimize to adjust this field
+        # (amount, frequency, start date, or end date) while staying above the
+        # emergency-fund floor.
+        optimize:
+          field: startDate
+          minDate: 2049-10
+          maxDate: 2050-06
       - name: Bonus
         amount: 7891.23
         frequency: 12

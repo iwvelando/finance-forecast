@@ -46,31 +46,32 @@ type OutputConfig struct {
 
 // Common holds the shared parameters, events, and loans between all scenarios.
 type Common struct {
-	StartingValue float64
-	DeathDate     string
-	Events        []Event
-	Loans         []Loan
-	Investments   []Investment
+	StartingValue float64      `yaml:"startingValue" mapstructure:"startingValue"`
+	DeathDate     string       `yaml:"deathDate,omitempty" mapstructure:"deathDate"`
+	Events        []Event      `yaml:"events" mapstructure:"events"`
+	Loans         []Loan       `yaml:"loans" mapstructure:"loans"`
+	Investments   []Investment `yaml:"investments" mapstructure:"investments"`
 }
 
 // Scenario holds all events and loans for a given scenario.
 type Scenario struct {
-	Name        string
-	Active      bool
-	Events      []Event
-	Loans       []Loan
-	Investments []Investment
+	Name        string       `yaml:"name" mapstructure:"name"`
+	Active      bool         `yaml:"active" mapstructure:"active"`
+	Events      []Event      `yaml:"events" mapstructure:"events"`
+	Loans       []Loan       `yaml:"loans" mapstructure:"loans"`
+	Investments []Investment `yaml:"investments" mapstructure:"investments"`
 }
 
 // Event indicates a financial event.
 type Event struct {
-	Name       string
-	Amount     float64
-	Percentage float64 `yaml:"percentage,omitempty"`
-	StartDate  string
-	EndDate    string
-	Frequency  int // months
-	DateList   []time.Time
+	Name       string           `yaml:"name" mapstructure:"name"`
+	Amount     float64          `yaml:"amount" mapstructure:"amount"`
+	Percentage float64          `yaml:"percentage,omitempty" mapstructure:"percentage,omitempty"`
+	StartDate  string           `yaml:"startDate,omitempty" mapstructure:"startDate,omitempty"`
+	EndDate    string           `yaml:"endDate,omitempty" mapstructure:"endDate,omitempty"`
+	Frequency  int              `yaml:"frequency" mapstructure:"frequency"`
+	DateList   []time.Time      `yaml:"-" mapstructure:"-"`
+	Optimizer  *OptimizerConfig `yaml:"optimize,omitempty" mapstructure:"optimize,omitempty"`
 }
 
 // LoadConfiguration takes a file path as input and loads the YAML-formatted

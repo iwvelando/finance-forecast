@@ -12,6 +12,7 @@ import (
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	"github.com/iwvelando/finance-forecast/internal/optimizer"
 	"github.com/iwvelando/finance-forecast/internal/server"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/output"
@@ -100,6 +101,7 @@ func main() {
 	maxUpload := flag.String("max-upload", "", "maximum upload size (e.g. 256K, 10M) overriding server config")
 	serverConfigPath := flag.String("server-config", constants.DefaultServerConfigFile, "path to server configuration file")
 	emergencyMonthsFlag := flag.String("emergency-months", "", "override emergency fund recommendation duration in months (e.g. 6). Set to 0 to disable recommendations.")
+	optimizeFlag := flag.Bool("optimize", false, "optimize configured parameters before forecasting")
 	showVersion := flag.Bool("version", false, "print application version and exit")
 	flag.Parse()
 
@@ -185,6 +187,25 @@ func main() {
 		)
 	}
 
+	var optimizationResult *optimizer.Result
+	if optimizeFlag != nil && *optimizeFlag {
+		runner, runnerErr := optimizer.NewRunner(logger, conf)
+		if runnerErr != nil {
+			logger.Fatal("failed to initialize optimizer",
+				zap.String("op", "main"),
+				zap.Error(runnerErr),
+			)
+		}
+
+		optimizationResult, runnerErr = runner.Run()
+		if runnerErr != nil {
+			logger.Fatal("optimizer execution failed",
+				zap.String("op", "main"),
+				zap.Error(runnerErr),
+			)
+		}
+	}
+
 	// Run the simulation to get the Forecast.
 	results, err := forecast.GetForecast(logger, *conf)
 	if err != nil {
@@ -192,6 +213,10 @@ func main() {
 			zap.String("op", "main"),
 			zap.Error(err),
 		)
+	}
+
+	if optimizationResult != nil && !optimizationResult.Empty() {
+		optimizationResult.Apply(results)
 	}
 
 	// Handle output.

@@ -39,6 +39,7 @@ When running in server mode:
 - `--server-config`: Path to the server configuration file (default `server-config.yaml`)
 - `--max-upload`: Maximum upload size in bytes for YAML configs (overrides server config)
 - `--emergency-months`: Override the months of expenses used for emergency fund recommendations (set to `0` to disable)
+- `--optimize`: Run the optimizer to adjust fields marked with an `optimize` block before generating forecasts
 
 ## Key Concepts
 
@@ -67,6 +68,51 @@ When running in server mode:
 - Configure `recommendations.emergencyFundMonths` (default `6`) to control the emergency fund target window.
 - The simulator estimates average monthly expenses across the run and highlights how many months of coverage your starting liquid balance provides.
 - Set the value to `0` via configuration or `--emergency-months=0` to disable the recommendation entirely.
+
+### Parameter Optimization
+
+Enable single-field optimization for specific events to find the smallest adjustment that keeps cash above the emergency-fund floor once it is reached. Mark events with an `optimize` block and run the CLI with `--optimize` to activate the solver.
+
+Supported event fields:
+
+- `amount`: Provide numeric `min`/`max` bounds (floating-point). Default tolerance is `0.01`.
+- `frequency`: Provide integer `min`/`max` bounds (in months). Bounds must be at least `1`. Default tolerance is `1`.
+- `startDate`: Provide `minDate`/`maxDate` bounds in `YYYY-MM`. Default tolerance is `1` month.
+- `endDate`: Provide `minDate`/`maxDate` bounds in `YYYY-MM`. Default tolerance is `1` month.
+
+`kind` and `target` default to `cash_floor` and `emergencyFund` respectively and are currently the only supported values. `tolerance` and `maxIterations` are optional overrides for the solver (defaults: `0.01` for continuous fields, `1` month for discrete fields, and `50` iterations).
+
+```yaml
+scenarios:
+  - name: Base Plan
+    active: true
+    events:
+      - name: Income
+        amount: 2000
+        startDate: 2025-01
+        endDate: 2025-12
+        frequency: 1
+      - name: New Job Amount
+        amount: 2000
+        startDate: 2026-01
+        frequency: 1
+        optimize:
+          field: amount
+          min: 0
+          max: 2500
+          tolerance: 0.5         # optional override, defaults to 0.01 for amount
+      - name: New Job Start Date
+        amount: 1800
+        startDate: 2026-04
+        frequency: 1
+        optimize:
+          field: startDate
+          minDate: 2025-10      # required when optimizing dates (inclusive)
+          maxDate: 2026-08      # required when optimizing dates (inclusive)
+          maxIterations: 60     # optional override, defaults to 50
+```
+
+During optimization the emergency-fund target is snapshotted from the baseline configuration and treated as a fixed cash floor. If the cash balance starts below the floor, the constraint is enforced beginning with the first month that reaches the target. The optimizer walks toward the boundary that most reduces the adjustment while keeping the post-threshold cash balance at or above the stored floor: when only the lower bound is feasible it searches upward for the highest feasible value, and when only the upper bound is feasible it searches downward for the lowest feasible value. If neither bound produces a feasible projection, the run fails fast with a descriptive error so you can widen the search range.
 
 ## Logging and Output Configuration
 

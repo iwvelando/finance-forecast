@@ -3,10 +3,12 @@ package output
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	"github.com/iwvelando/finance-forecast/pkg/optimization"
 )
 
 // formatCurrency formats a float64 as currency with commas
@@ -32,6 +34,47 @@ func formatCurrency(amount float64) string {
 	}
 
 	return intPart + "." + decPart
+}
+
+func formatOptimizerValue(summary optimization.Summary, original bool) string {
+	field := strings.ToLower(summary.Field)
+	if original {
+		if summary.OriginalDisplay != "" {
+			return summary.OriginalDisplay
+		}
+	} else {
+		if summary.ValueDisplay != "" {
+			return summary.ValueDisplay
+		}
+	}
+
+	var value float64
+	if original {
+		value = summary.Original
+	} else {
+		value = summary.Value
+	}
+
+	switch field {
+	case "", "amount":
+		return "$" + formatCurrency(value)
+	case "frequency":
+		return fmt.Sprintf("%d", int(math.Round(value)))
+	case "startdate", "enddate":
+		return formatMonthFromIndex(value)
+	default:
+		return fmt.Sprintf("%.2f", value)
+	}
+}
+
+func formatMonthFromIndex(value float64) string {
+	index := int(math.Round(value))
+	if index < 0 {
+		index = 0
+	}
+	year := index / 12
+	month := index%12 + 1
+	return fmt.Sprintf("%04d-%02d", year, month)
 }
 
 // PrettyFormat formats the forecast results in a human-readable format
@@ -60,6 +103,7 @@ func PrettyFormat(results []forecast.Forecast) {
 	for _, scenario := range results {
 		fmt.Printf("--- Results for scenario %s ---\n", scenario.Name)
 		printEmergencyFundSummary(scenario.Metrics.EmergencyFund)
+		printOptimizationSummary(scenario.Metrics.Optimizations)
 		fmt.Printf("Date    | Liquid Net Worth | Total Net Worth | Notes\n")
 		fmt.Printf("____    | ________________ | _______________ | _____\n")
 
@@ -101,6 +145,39 @@ func printEmergencyFundSummary(ef *forecast.EmergencyFundRecommendation) {
 		line += fmt.Sprintf(" | Surplus: $%s", formatCurrency(ef.Surplus))
 	}
 	fmt.Println(line)
+}
+
+func printOptimizationSummary(summaries []optimization.Summary) {
+	if len(summaries) == 0 {
+		return
+	}
+
+	fmt.Println("Optimization adjustments:")
+	for _, summary := range summaries {
+		original := formatOptimizerValue(summary, true)
+		value := formatOptimizerValue(summary, false)
+		floor := formatCurrency(summary.Floor)
+		minimum := formatCurrency(summary.MinimumCash)
+		headroom := formatCurrency(summary.Headroom)
+		status := "converged"
+		if !summary.Converged {
+			status = "not converged"
+		}
+		fmt.Printf(" - %s (%s): %s -> %s | floor $%s | min cash $%s | headroom $%s | iterations %d (%s)\n",
+			summary.TargetName,
+			summary.Field,
+			original,
+			value,
+			floor,
+			minimum,
+			headroom,
+			summary.Iterations,
+			status,
+		)
+		if len(summary.Notes) > 0 {
+			fmt.Printf("   Notes: %s\n", strings.Join(summary.Notes, "; "))
+		}
+	}
 }
 
 // CsvFormat outputs in comma-separated value format.

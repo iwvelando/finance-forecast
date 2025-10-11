@@ -12,22 +12,22 @@ import (
 
 // Loan indicates a loan and its parameters.
 type Loan struct {
-	Name                    string
-	StartDate               string
-	Principal               float64
-	InterestRate            float64
-	Term                    int // months
-	DownPayment             float64
-	Escrow                  float64
-	MortgageInsurance       float64
-	MortgageInsuranceCutoff float64
-	EarlyPayoffThreshold    float64
-	EarlyPayoffDate         string
-	SellProperty            bool
-	SellPrice               float64
-	SellCostsNet            float64
-	ExtraPrincipalPayments  []Event
-	AmortizationSchedule    map[string]Payment
+	Name                    string             `yaml:"name,omitempty" mapstructure:"name"`
+	StartDate               string             `yaml:"startDate,omitempty" mapstructure:"startDate"`
+	Principal               float64            `yaml:"principal" mapstructure:"principal"`
+	InterestRate            float64            `yaml:"interestRate" mapstructure:"interestRate"`
+	Term                    int                `yaml:"term" mapstructure:"term"`
+	DownPayment             float64            `yaml:"downPayment,omitempty" mapstructure:"downPayment"`
+	Escrow                  float64            `yaml:"escrow,omitempty" mapstructure:"escrow"`
+	MortgageInsurance       float64            `yaml:"mortgageInsurance,omitempty" mapstructure:"mortgageInsurance"`
+	MortgageInsuranceCutoff float64            `yaml:"mortgageInsuranceCutoff,omitempty" mapstructure:"mortgageInsuranceCutoff"`
+	EarlyPayoffThreshold    float64            `yaml:"earlyPayoffThreshold,omitempty" mapstructure:"earlyPayoffThreshold"`
+	EarlyPayoffDate         string             `yaml:"earlyPayoffDate,omitempty" mapstructure:"earlyPayoffDate"`
+	SellProperty            bool               `yaml:"sellProperty,omitempty" mapstructure:"sellProperty"`
+	SellPrice               float64            `yaml:"sellPrice,omitempty" mapstructure:"sellPrice"`
+	SellCostsNet            float64            `yaml:"sellCostsNet,omitempty" mapstructure:"sellCostsNet"`
+	ExtraPrincipalPayments  []Event            `yaml:"extraPrincipalPayments,omitempty" mapstructure:"extraPrincipalPayments"`
+	AmortizationSchedule    map[string]Payment `yaml:"amortizationSchedule,omitempty" mapstructure:"amortizationSchedule"`
 }
 
 // Payment holds the values for a given payment.

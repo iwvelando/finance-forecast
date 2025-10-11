@@ -77,6 +77,10 @@
                             <button id="upload-config-button" type="button" class="button secondary">Upload Config</button>
                             <input id="upload-config-input" type="file" accept=".yaml,.yml" class="visually-hidden" aria-hidden="true" tabindex="-1">
                             <button id="run-forecast-button" type="button">Run Forecast</button>
+                            <label for="optimizer-toggle-input" class="toolbar-toggle" title="Adjusts eligible event fields (amount, frequency, start date, end date) to keep cash above the emergency-fund floor during the run.">
+                                <input id="optimizer-toggle-input" type="checkbox" />
+                                <span>Run optimizer</span>
+                            </label>
                             <button id="download-config-button" type="button" class="button secondary" disabled>Download Config</button>
                             <button id="reset-config-button" type="button" class="button subtle">Reset Config</button>
                             <span id="editor-loading" class="hidden">Processing…</span>
