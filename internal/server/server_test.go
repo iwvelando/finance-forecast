@@ -396,6 +396,20 @@ func TestStaticAssetsServed(t *testing.T) {
 	if !strings.Contains(cssRR.Body.String(), ":root") {
 		t.Fatalf("expected CSS body to contain styles, got %q", cssRR.Body.String())
 	}
+
+	faviconReq := httptest.NewRequest(http.MethodGet, "/favicon.png", nil)
+	faviconRR := httptest.NewRecorder()
+	handler.ServeHTTP(faviconRR, faviconReq)
+
+	if faviconRR.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for favicon, got %d", faviconRR.Code)
+	}
+	if ct := faviconRR.Header().Get("Content-Type"); !strings.Contains(ct, "image/png") {
+		t.Fatalf("expected favicon content-type image/png, got %q", ct)
+	}
+	if len(faviconRR.Body.Bytes()) == 0 {
+		t.Fatal("expected favicon body to be non-empty")
+	}
 }
 
 func performUpload(t *testing.T, handler http.Handler, content, filename string) *httptest.ResponseRecorder {
