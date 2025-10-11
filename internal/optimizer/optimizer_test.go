@@ -8,6 +8,7 @@ import (
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	formatutil "github.com/iwvelando/finance-forecast/pkg/format"
 	"go.uber.org/zap"
 )
 
@@ -468,8 +469,8 @@ func TestRunnerAmountOptimizerPrefersMinimumWhenHeadroomUnaffected(t *testing.T)
 	if summary.Value != -30000 {
 		t.Fatalf("expected summary value -30000, got %v", summary.Value)
 	}
-	if summary.ValueDisplay != formatCurrency(-30000) {
-		t.Fatalf("expected summary display %s, got %s", formatCurrency(-30000), summary.ValueDisplay)
+	if summary.ValueDisplay != formatutil.Currency(-30000) {
+		t.Fatalf("expected summary display %s, got %s", formatutil.Currency(-30000), summary.ValueDisplay)
 	}
 }
 

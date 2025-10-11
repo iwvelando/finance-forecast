@@ -9,6 +9,7 @@ import (
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	formatutil "github.com/iwvelando/finance-forecast/pkg/format"
 	"github.com/iwvelando/finance-forecast/pkg/mathutil"
 	"github.com/iwvelando/finance-forecast/pkg/optimization"
 	"go.uber.org/zap"
@@ -51,6 +52,12 @@ type fieldState struct {
 	numeric float64
 	display string
 }
+
+const (
+	headroomDecisionEpsilon = 1e-6
+	deltaDecisionEpsilon    = 1e-6
+	valueDecisionEpsilon    = 1e-6
+)
 
 // Result summarizes optimizer adjustments keyed by scenario name.
 type Result struct {
@@ -206,6 +213,146 @@ func (r *Runner) collectTargets() ([]eventTarget, error) {
 	return targets, nil
 }
 
+type evaluationSelector struct {
+	originalValue float64
+	preferConsume bool
+	preferLower   bool
+	preferHigher  bool
+	upperIsBetter bool
+	bestEval      evaluation
+	bestChosen    bool
+	bestHeadroom  float64
+	bestDelta     float64
+}
+
+func newEvaluationSelector(target eventTarget, lower, upper, preferred evaluation) *evaluationSelector {
+	preferConsume, preferLower, preferHigher := determineConsumePreference(target)
+	selector := &evaluationSelector{
+		originalValue: target.originalState.numeric,
+		preferConsume: preferConsume,
+		preferLower:   preferLower,
+		preferHigher:  preferHigher,
+		upperIsBetter: upper.headroom() >= lower.headroom(),
+		bestEval:      preferred,
+		bestHeadroom:  preferred.headroom(),
+		bestDelta:     math.Abs(preferred.value - target.originalState.numeric),
+		bestChosen:    preferred.feasible(),
+	}
+	return selector
+}
+
+func determineConsumePreference(target eventTarget) (bool, bool, bool) {
+	fieldKind := config.CanonicalOptimizerField(target.field)
+	if target.event == nil || target.event.Amount >= 0 {
+		return false, false, false
+	}
+	switch fieldKind {
+	case config.OptimizerFieldAmount, config.OptimizerFieldFrequency, config.OptimizerFieldStartDate:
+		return true, true, false
+	case config.OptimizerFieldEndDate:
+		return true, false, true
+	default:
+		return true, false, false
+	}
+}
+
+func (s *evaluationSelector) consider(eval evaluation) {
+	if !eval.feasible() {
+		return
+	}
+	headroom := eval.headroom()
+	delta := math.Abs(eval.value - s.originalValue)
+
+	if !s.bestChosen {
+		s.update(eval, headroom, delta)
+		return
+	}
+
+	if s.preferConsume {
+		if headroom < s.bestHeadroom-headroomDecisionEpsilon {
+			s.update(eval, headroom, delta)
+			return
+		}
+		if math.Abs(headroom-s.bestHeadroom) <= headroomDecisionEpsilon {
+			if s.preferLower && eval.value < s.bestEval.value-valueDecisionEpsilon {
+				s.update(eval, headroom, delta)
+				return
+			}
+			if s.preferHigher && eval.value > s.bestEval.value+valueDecisionEpsilon {
+				s.update(eval, headroom, delta)
+				return
+			}
+			if s.preferLower && eval.value > s.bestEval.value+valueDecisionEpsilon {
+				return
+			}
+			if s.preferHigher && eval.value < s.bestEval.value-valueDecisionEpsilon {
+				return
+			}
+			if delta < s.bestDelta-deltaDecisionEpsilon {
+				s.update(eval, headroom, delta)
+				return
+			}
+			if math.Abs(delta-s.bestDelta) <= deltaDecisionEpsilon {
+				if s.preferLower && eval.value < s.bestEval.value-valueDecisionEpsilon {
+					s.update(eval, headroom, delta)
+					return
+				}
+				if s.preferHigher && eval.value > s.bestEval.value+valueDecisionEpsilon {
+					s.update(eval, headroom, delta)
+					return
+				}
+			}
+		}
+		return
+	}
+
+	if headroom > s.bestHeadroom+headroomDecisionEpsilon {
+		s.update(eval, headroom, delta)
+		return
+	}
+	if math.Abs(headroom-s.bestHeadroom) <= headroomDecisionEpsilon {
+		if delta < s.bestDelta-deltaDecisionEpsilon {
+			s.update(eval, headroom, delta)
+			return
+		}
+		if math.Abs(delta-s.bestDelta) <= deltaDecisionEpsilon {
+			if s.upperIsBetter && eval.value > s.bestEval.value+valueDecisionEpsilon {
+				s.update(eval, headroom, delta)
+			} else if !s.upperIsBetter && eval.value < s.bestEval.value-valueDecisionEpsilon {
+				s.update(eval, headroom, delta)
+			}
+		}
+	}
+}
+
+func (s *evaluationSelector) finalize(lower, upper evaluation) evaluation {
+	if s.bestChosen {
+		return s.bestEval
+	}
+
+	selectUpper := false
+	if s.preferConsume {
+		selectUpper = upper.headroom() <= lower.headroom()
+	} else {
+		selectUpper = upper.headroom() >= lower.headroom()
+	}
+
+	if selectUpper {
+		s.update(upper, upper.headroom(), math.Abs(upper.value-s.originalValue))
+	} else {
+		s.update(lower, lower.headroom(), math.Abs(lower.value-s.originalValue))
+	}
+
+	return s.bestEval
+}
+
+func (s *evaluationSelector) update(eval evaluation, headroom, delta float64) {
+	s.bestEval = eval
+	s.bestHeadroom = headroom
+	s.bestDelta = delta
+	s.bestChosen = true
+}
+
 func (r *Runner) optimizeEvent(target eventTarget, floor float64) (optimization.Summary, error) {
 	cfg := target.event.Optimizer
 	if cfg == nil {
@@ -233,7 +380,7 @@ func (r *Runner) optimizeEvent(target eventTarget, floor float64) (optimization.
 		}
 		note := fmt.Sprintf(
 			"unable to satisfy minimum cash %s within bounds %s to %s",
-			formatCurrency(floor),
+			formatutil.Currency(floor),
 			formatFieldDisplay(target.field, minVal),
 			formatFieldDisplay(target.field, maxVal),
 		)
@@ -265,140 +412,11 @@ func (r *Runner) optimizeEvent(target eventTarget, floor float64) (optimization.
 		if err != nil {
 			return optimization.Summary{}, err
 		}
-		bestEval := preferredEval
-		bestChosen := bestEval.feasible()
-		bestHeadroom := bestEval.headroom()
-		bestDelta := math.Abs(bestEval.value - target.originalState.numeric)
-		fieldKind := config.CanonicalOptimizerField(target.field)
-		upperIsBetter := upperEval.headroom() >= lowerEval.headroom()
-		headroomEpsilon := 1e-6
-		deltaEpsilon := 1e-6
-		valueEpsilon := 1e-6
-		preferConsume := target.event.Amount < 0 && (fieldKind == config.OptimizerFieldAmount || fieldKind == config.OptimizerFieldFrequency || fieldKind == config.OptimizerFieldStartDate || fieldKind == config.OptimizerFieldEndDate)
-		preferLowerValue := false
-		preferHigherValue := false
-		if preferConsume {
-			switch fieldKind {
-			case config.OptimizerFieldAmount, config.OptimizerFieldFrequency, config.OptimizerFieldStartDate:
-				preferLowerValue = true
-			case config.OptimizerFieldEndDate:
-				preferHigherValue = true
-			}
-		}
-
-		considerCandidate := func(eval evaluation) {
-			if !eval.feasible() {
-				return
-			}
-			headroom := eval.headroom()
-			delta := math.Abs(eval.value - target.originalState.numeric)
-
-			if !bestChosen {
-				bestEval = eval
-				bestHeadroom = headroom
-				bestDelta = delta
-				bestChosen = true
-				return
-			}
-
-			if preferConsume {
-				if headroom < bestHeadroom-headroomEpsilon {
-					bestEval = eval
-					bestHeadroom = headroom
-					bestDelta = delta
-					return
-				}
-				if math.Abs(headroom-bestHeadroom) <= headroomEpsilon {
-					if preferLowerValue && eval.value < bestEval.value-valueEpsilon {
-						bestEval = eval
-						bestHeadroom = headroom
-						bestDelta = delta
-						return
-					}
-					if preferHigherValue && eval.value > bestEval.value+valueEpsilon {
-						bestEval = eval
-						bestHeadroom = headroom
-						bestDelta = delta
-						return
-					}
-					if preferLowerValue && eval.value > bestEval.value+valueEpsilon {
-						return
-					}
-					if preferHigherValue && eval.value < bestEval.value-valueEpsilon {
-						return
-					}
-					if delta < bestDelta-deltaEpsilon {
-						bestEval = eval
-						bestHeadroom = headroom
-						bestDelta = delta
-						return
-					}
-					if math.Abs(delta-bestDelta) <= deltaEpsilon {
-						if preferLowerValue && eval.value < bestEval.value-valueEpsilon {
-							bestEval = eval
-							bestHeadroom = headroom
-							bestDelta = delta
-							return
-						}
-						if preferHigherValue && eval.value > bestEval.value+valueEpsilon {
-							bestEval = eval
-							bestHeadroom = headroom
-							bestDelta = delta
-							return
-						}
-					}
-				}
-				return
-			}
-
-			if headroom > bestHeadroom+headroomEpsilon {
-				bestEval = eval
-				bestHeadroom = headroom
-				bestDelta = delta
-				return
-			}
-			if math.Abs(headroom-bestHeadroom) <= headroomEpsilon {
-				if delta < bestDelta-deltaEpsilon {
-					bestEval = eval
-					bestHeadroom = headroom
-					bestDelta = delta
-					return
-				}
-				if math.Abs(delta-bestDelta) <= deltaEpsilon {
-					if upperIsBetter && eval.value > bestEval.value+valueEpsilon {
-						bestEval = eval
-						bestHeadroom = headroom
-						bestDelta = delta
-					} else if !upperIsBetter && eval.value < bestEval.value-valueEpsilon {
-						bestEval = eval
-						bestHeadroom = headroom
-						bestDelta = delta
-					}
-				}
-			}
-		}
-
-		considerCandidate(preferredEval)
-		considerCandidate(lowerEval)
-		considerCandidate(upperEval)
-
-		if !bestChosen {
-			if preferConsume {
-				if upperEval.headroom() <= lowerEval.headroom() {
-					bestEval = upperEval
-				} else {
-					bestEval = lowerEval
-				}
-			} else {
-				if upperEval.headroom() >= lowerEval.headroom() {
-					bestEval = upperEval
-				} else {
-					bestEval = lowerEval
-				}
-			}
-			bestHeadroom = bestEval.headroom()
-			bestDelta = math.Abs(bestEval.value - target.originalState.numeric)
-		}
+		selector := newEvaluationSelector(target, lowerEval, upperEval, preferredEval)
+		selector.consider(preferredEval)
+		selector.consider(lowerEval)
+		selector.consider(upperEval)
+		bestEval := selector.finalize(lowerEval, upperEval)
 
 		_, appliedState, err := r.setEventFieldValue(target, bestEval.value)
 		if err != nil {
@@ -421,7 +439,7 @@ func (r *Runner) optimizeEvent(target eventTarget, floor float64) (optimization.
 		if !bestEval.feasible() {
 			note := fmt.Sprintf(
 				"unable to satisfy minimum cash %s within bounds %s to %s",
-				formatCurrency(floor),
+				formatutil.Currency(floor),
 				formatFieldDisplay(target.field, minVal),
 				formatFieldDisplay(target.field, maxVal),
 			)
@@ -495,7 +513,7 @@ func (r *Runner) optimizeEvent(target eventTarget, floor float64) (optimization.
 	if !finalEval.feasible() {
 		note := fmt.Sprintf(
 			"unable to satisfy minimum cash %s within bounds %s to %s",
-			formatCurrency(floor),
+			formatutil.Currency(floor),
 			formatFieldDisplay(target.field, minVal),
 			formatFieldDisplay(target.field, maxVal),
 		)
@@ -544,32 +562,6 @@ func (r *Runner) optimizeEvent(target eventTarget, floor float64) (optimization.
 	}
 
 	return summary, nil
-}
-
-func formatCurrency(amount float64) string {
-	formatted := fmt.Sprintf("%.2f", math.Abs(amount))
-	parts := strings.Split(formatted, ".")
-	intPart := parts[0]
-	decPart := "00"
-	if len(parts) > 1 {
-		decPart = parts[1]
-	}
-
-	if len(intPart) > 3 {
-		var builder strings.Builder
-		for i, digit := range intPart {
-			if i > 0 && (len(intPart)-i)%3 == 0 {
-				builder.WriteByte(',')
-			}
-			builder.WriteRune(digit)
-		}
-		intPart = builder.String()
-	}
-
-	if amount < 0 {
-		return "-$" + intPart + "." + decPart
-	}
-	return "$" + intPart + "." + decPart
 }
 
 func (r *Runner) evaluateTarget(target eventTarget, amount float64, floor float64) (evaluation, error) {
@@ -695,7 +687,7 @@ func getEventFieldState(event *config.Event, field string) (fieldState, error) {
 	switch normalized {
 	case config.OptimizerFieldAmount:
 		value := mathutil.Round(event.Amount)
-		return fieldState{numeric: value, display: formatCurrency(value)}, nil
+		return fieldState{numeric: value, display: formatutil.Currency(value)}, nil
 	case config.OptimizerFieldFrequency:
 		if event.Frequency <= 0 {
 			return fieldState{}, fmt.Errorf("event %s must have a positive frequency", event.Name)
@@ -741,7 +733,7 @@ func (r *Runner) setEventFieldValue(target eventTarget, value float64) (func(), 
 		rounded := mathutil.Round(value)
 		event.Amount = rounded
 		restore = func() { event.Amount = previous }
-		state = fieldState{numeric: rounded, display: formatCurrency(rounded)}
+		state = fieldState{numeric: rounded, display: formatutil.Currency(rounded)}
 	case config.OptimizerFieldFrequency:
 		previous := event.Frequency
 		rounded := int(math.Round(value))
@@ -825,7 +817,7 @@ func clampValue(value, min, max float64) float64 {
 func formatFieldDisplay(field string, value float64) string {
 	switch config.CanonicalOptimizerField(field) {
 	case config.OptimizerFieldAmount:
-		return formatCurrency(mathutil.Round(value))
+		return formatutil.Currency(mathutil.Round(value))
 	case config.OptimizerFieldFrequency:
 		return fmt.Sprintf("%d", int(math.Round(value)))
 	case config.OptimizerFieldStartDate, config.OptimizerFieldEndDate:

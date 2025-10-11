@@ -3000,28 +3000,45 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 	statusEl.className = "muted-text editor-optimizer__status";
 	section.appendChild(statusEl);
 
-	let optimizerConfig = null;
-	let normalizedField = "amount";
+	const optimizerPathPrefix = `${basePath}.optimize`;
 
-	if (!optimizerEnabled) {
-		statusEl.textContent = "Turn on Run optimizer in the toolbar to adjust this event automatically.";
-	} else if (hasOptimizer) {
-		normalizedField = normalizeOptimizerField(event.optimize && event.optimize.field ? event.optimize.field : "amount");
-		optimizerConfig = ensureOptimizerDefaults(event, normalizedField);
-		normalizedField = normalizeOptimizerField(optimizerConfig.field);
+	const clearOptimizerGrid = () => {
+		const existingGrid = section.querySelector(".editor-optimizer__grid");
+		if (existingGrid) {
+			existingGrid.remove();
+		}
+		removeRegisteredInputsByPrefix(`${optimizerPathPrefix}.`);
+	};
+
+	const renderOptimizerContent = () => {
+		clearOptimizerGrid();
+
+		const hasOptimizer = Boolean(event && typeof event.optimize === "object");
+		toggleInput.disabled = !optimizerEnabled;
+		toggleInput.checked = hasOptimizer;
+
+		if (!optimizerEnabled) {
+			statusEl.textContent = "Turn on Run optimizer in the toolbar to adjust this event automatically.";
+			return;
+		}
+
+		if (!hasOptimizer) {
+			statusEl.textContent = "Enable the optimizer to adjust this event while keeping cash above the emergency-fund floor.";
+			return;
+		}
+
+		const initialField = event.optimize && event.optimize.field ? event.optimize.field : "amount";
+		const optimizerConfig = ensureOptimizerDefaults(event, initialField);
+		const normalizedField = normalizeOptimizerField(optimizerConfig.field);
 		statusEl.textContent = getOptimizerFieldDescription(normalizedField);
-	} else {
-		statusEl.textContent = "Enable the optimizer to adjust this event while keeping cash above the emergency-fund floor.";
-	}
 
-	if (optimizerEnabled && optimizerConfig) {
 		const optimizerGrid = document.createElement("div");
 		optimizerGrid.className = "editor-grid editor-optimizer__grid";
 
 		const fieldSelect = createInputField({
 			label: "Parameter",
-			path: `${basePath}.optimize.field`,
-			value: normalizeOptimizerField(optimizerConfig.field || "amount"),
+			path: `${optimizerPathPrefix}.field`,
+			value: normalizedField,
 			inputType: "select",
 			options: OPTIMIZER_FIELD_OPTIONS,
 			tooltip: "Choose which detail the optimizer may adjust for this event.",
@@ -3029,7 +3046,7 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 				const nextField = normalizeOptimizerField(selected);
 				ensureOptimizerDefaults(event, nextField, { resetBounds: true, resetTolerance: true });
 				queuePersistEditorState();
-				renderConfigEditor();
+				renderOptimizerContent();
 			},
 		});
 		optimizerGrid.appendChild(fieldSelect);
@@ -3044,7 +3061,7 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 
 		optimizerGrid.appendChild(createInputField({
 			label: meta.minLabel,
-			path: `${basePath}.optimize.${meta.minPath}`,
+			path: `${optimizerPathPrefix}.${meta.minPath}`,
 			value: minValue,
 			inputType: meta.inputType,
 			step: meta.step,
@@ -3057,7 +3074,7 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 
 		optimizerGrid.appendChild(createInputField({
 			label: meta.maxLabel,
-			path: `${basePath}.optimize.${meta.maxPath}`,
+			path: `${optimizerPathPrefix}.${meta.maxPath}`,
 			value: maxValue,
 			inputType: meta.inputType,
 			step: meta.step,
@@ -3070,7 +3087,7 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 
 		optimizerGrid.appendChild(createInputField({
 			label: meta.toleranceLabel,
-			path: `${basePath}.optimize.tolerance`,
+			path: `${optimizerPathPrefix}.tolerance`,
 			value: Number.isFinite(optimizerConfig.tolerance) ? optimizerConfig.tolerance : "",
 			inputType: meta.toleranceInputType,
 			step: meta.toleranceStep,
@@ -3082,7 +3099,7 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 
 		optimizerGrid.appendChild(createInputField({
 			label: "Max iterations",
-			path: `${basePath}.optimize.maxIterations`,
+			path: `${optimizerPathPrefix}.maxIterations`,
 			value: Number.isFinite(optimizerConfig.maxIterations) ? optimizerConfig.maxIterations : "",
 			inputType: "number",
 			step: "1",
@@ -3093,7 +3110,9 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 		}));
 
 		section.appendChild(optimizerGrid);
-	}
+	};
+
+	renderOptimizerContent();
 
 	toggleInput.addEventListener("change", () => {
 		if (!optimizerEnabled) {
@@ -3103,12 +3122,12 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 		if (toggleInput.checked) {
 			const nextField = normalizeOptimizerField(event.optimize && event.optimize.field ? event.optimize.field : "amount");
 			ensureOptimizerDefaults(event, nextField, { resetBounds: true, resetTolerance: true });
-			queuePersistEditorState();
 		} else {
 			delete event.optimize;
 			deleteConfigAtPath(`${basePath}.optimize`);
 		}
-		renderConfigEditor();
+		queuePersistEditorState();
+		renderOptimizerContent();
 	});
 
 	return section;
@@ -4111,6 +4130,15 @@ function findRegisteredInput(path) {
 		return null;
 	}
 	return registeredInputs.find((entry) => entry.path === path) || null;
+}
+
+function removeRegisteredInputsByPrefix(prefix) {
+	if (!prefix) {
+		return;
+	}
+	registeredInputs = registeredInputs.filter((entry) => {
+		return !(entry.path && entry.path.startsWith(prefix));
+	});
 }
 
 function setFieldDisabled(path, disabled) {
