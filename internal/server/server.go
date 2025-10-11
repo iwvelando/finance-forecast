@@ -10,11 +10,13 @@ import (
 	"io/fs"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/iwvelando/finance-forecast/internal/config"
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	"github.com/iwvelando/finance-forecast/internal/optimizer"
 	"github.com/iwvelando/finance-forecast/pkg/constants"
 	"github.com/iwvelando/finance-forecast/pkg/output"
 	"go.uber.org/zap"
@@ -28,6 +30,10 @@ type handler struct {
 	logger        *zap.Logger
 	maxUploadSize int64
 	version       string
+}
+
+type forecastOptions struct {
+	Optimize bool
 }
 
 // NewHandler constructs the HTTP handler that serves the web UI and forecast API.
@@ -96,6 +102,20 @@ type scenarioValue struct {
 
 type scenarioMetrics struct {
 	EmergencyFund *emergencyFundMetric `json:"emergencyFund,omitempty"`
+	Optimizations []optimizationMetric `json:"optimizations,omitempty"`
+}
+
+type optimizationMetric struct {
+	TargetName  string   `json:"targetName"`
+	Field       string   `json:"field"`
+	Original    float64  `json:"original"`
+	Value       float64  `json:"value"`
+	Floor       float64  `json:"floor"`
+	MinimumCash float64  `json:"minimumCash"`
+	Headroom    float64  `json:"headroom"`
+	Iterations  int      `json:"iterations"`
+	Converged   bool     `json:"converged"`
+	Notes       []string `json:"notes,omitempty"`
 }
 
 type emergencyFundMetric struct {
@@ -156,7 +176,7 @@ func (h *handler) handleForecast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.runForecast(w, configBytes, configMap, start, "server.handleForecast")
+	h.runForecast(w, configBytes, configMap, start, "server.handleForecast", forecastOptions{})
 }
 
 func (h *handler) handleVersion(w http.ResponseWriter, r *http.Request) {
@@ -187,7 +207,29 @@ func (h *handler) handleForecastEditor(w http.ResponseWriter, r *http.Request) {
 		payload = make(map[string]interface{})
 	}
 
-	configBytes, err := yaml.Marshal(payload)
+	configPayload := payload
+	if rawConfig, ok := payload["config"]; ok {
+		cfgMap, ok := rawConfig.(map[string]interface{})
+		if !ok {
+			h.respondErrorWithOp(w, http.StatusBadRequest, "invalid config payload: expected object", "server.handleForecastEditor")
+			return
+		}
+		configPayload = cfgMap
+	}
+
+	options := forecastOptions{}
+	if rawOptions, ok := payload["options"]; ok {
+		optsMap, ok := rawOptions.(map[string]interface{})
+		if !ok {
+			h.respondErrorWithOp(w, http.StatusBadRequest, "invalid options payload: expected object", "server.handleForecastEditor")
+			return
+		}
+		if optimizeVal, ok := optsMap["optimize"]; ok {
+			options.Optimize = coerceBool(optimizeVal)
+		}
+	}
+
+	configBytes, err := yaml.Marshal(configPayload)
 	if err != nil {
 		h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to encode configuration: %v", err), "server.handleForecastEditor")
 		return
@@ -199,7 +241,7 @@ func (h *handler) handleForecastEditor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.runForecast(w, configBytes, configMap, start, "server.handleForecastEditor")
+	h.runForecast(w, configBytes, configMap, start, "server.handleForecastEditor", options)
 }
 
 func (h *handler) handleConfigExport(w http.ResponseWriter, r *http.Request) {
@@ -286,7 +328,7 @@ func (o orderedConfig) MarshalYAML() (interface{}, error) {
 	return mapNode, nil
 }
 
-func (h *handler) runForecast(w http.ResponseWriter, configBytes []byte, configMap map[string]interface{}, start time.Time, op string) {
+func (h *handler) runForecast(w http.ResponseWriter, configBytes []byte, configMap map[string]interface{}, start time.Time, op string, opts forecastOptions) {
 	cfg, err := config.LoadConfigurationFromReader(bytes.NewReader(configBytes))
 	if err != nil {
 		h.respondErrorWithOp(w, http.StatusBadRequest, err.Error(), op)
@@ -304,10 +346,51 @@ func (h *handler) runForecast(w http.ResponseWriter, configBytes []byte, configM
 		return
 	}
 
+	var optimizationResult *optimizer.Result
+	if opts.Optimize {
+		runner, err := optimizer.NewRunner(h.logger, cfg)
+		if err != nil {
+			h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("failed to initialize optimizer: %v", err), op)
+			return
+		}
+
+		optimizationResult, err = runner.Run()
+		if err != nil {
+			h.respondErrorWithOp(w, http.StatusBadRequest, fmt.Sprintf("optimizer execution failed: %v", err), op)
+			return
+		}
+	}
+
 	results, err := forecast.GetForecast(h.logger, *cfg)
 	if err != nil {
 		h.respondErrorWithOp(w, http.StatusInternalServerError, fmt.Sprintf("failed to compute forecast: %v", err), op)
 		return
+	}
+
+	if optimizationResult != nil && !optimizationResult.Empty() {
+		optimizationResult.Apply(results)
+	}
+
+	if opts.Optimize {
+		updatedBytes, err := yaml.Marshal(cfg)
+		if err != nil {
+			if h.logger != nil {
+				h.logger.Warn("failed to marshal optimized configuration",
+					zap.String("op", op),
+					zap.Error(err),
+				)
+			}
+		} else {
+			configBytes = updatedBytes
+			if updatedMap, mapErr := decodeYAMLToMap(updatedBytes); mapErr == nil {
+				configMap = updatedMap
+			} else if h.logger != nil {
+				h.logger.Warn("failed to decode optimized configuration map",
+					zap.String("op", op),
+					zap.Error(mapErr),
+				)
+			}
+		}
 	}
 
 	elapsed := time.Since(start)
@@ -456,6 +539,24 @@ func buildMetrics(results []forecast.Forecast) []scenarioMetrics {
 				Surplus:                ef.Surplus,
 			}
 		}
+		if len(scenario.Metrics.Optimizations) > 0 {
+			summaries := make([]optimizationMetric, 0, len(scenario.Metrics.Optimizations))
+			for _, summary := range scenario.Metrics.Optimizations {
+				summaries = append(summaries, optimizationMetric{
+					TargetName:  summary.TargetName,
+					Field:       summary.Field,
+					Original:    summary.Original,
+					Value:       summary.Value,
+					Floor:       summary.Floor,
+					MinimumCash: summary.MinimumCash,
+					Headroom:    summary.Headroom,
+					Iterations:  summary.Iterations,
+					Converged:   summary.Converged,
+					Notes:       append([]string(nil), summary.Notes...),
+				})
+			}
+			scenarioMetric.Optimizations = summaries
+		}
 		metrics = append(metrics, scenarioMetric)
 	}
 
@@ -477,4 +578,30 @@ func normalizeNotes(notes []string) []string {
 		return nil
 	}
 	return filtered
+}
+
+func coerceBool(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return false
+		}
+		if parsed, err := strconv.ParseBool(trimmed); err == nil {
+			return parsed
+		}
+	case float64:
+		return v != 0
+	case int:
+		return v != 0
+	case int64:
+		return v != 0
+	case json.Number:
+		if parsed, err := strconv.ParseFloat(v.String(), 64); err == nil {
+			return parsed != 0
+		}
+	}
+	return false
 }

@@ -3,35 +3,54 @@ package output
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
 	"github.com/iwvelando/finance-forecast/internal/forecast"
+	formatutil "github.com/iwvelando/finance-forecast/pkg/format"
+	"github.com/iwvelando/finance-forecast/pkg/optimization"
 )
 
-// formatCurrency formats a float64 as currency with commas
-func formatCurrency(amount float64) string {
-	// Format with 2 decimal places
-	formatted := fmt.Sprintf("%.2f", amount)
-
-	// Split into integer and decimal parts
-	parts := strings.Split(formatted, ".")
-	intPart := parts[0]
-	decPart := parts[1]
-
-	// Add commas to integer part
-	if len(intPart) > 3 {
-		var result strings.Builder
-		for i, digit := range intPart {
-			if i > 0 && (len(intPart)-i)%3 == 0 {
-				result.WriteString(",")
-			}
-			result.WriteRune(digit)
+func formatOptimizerValue(summary optimization.Summary, original bool) string {
+	field := strings.ToLower(summary.Field)
+	if original {
+		if summary.OriginalDisplay != "" {
+			return summary.OriginalDisplay
 		}
-		intPart = result.String()
+	} else {
+		if summary.ValueDisplay != "" {
+			return summary.ValueDisplay
+		}
 	}
 
-	return intPart + "." + decPart
+	var value float64
+	if original {
+		value = summary.Original
+	} else {
+		value = summary.Value
+	}
+
+	switch field {
+	case "", "amount":
+		return formatutil.Currency(value)
+	case "frequency":
+		return fmt.Sprintf("%d", int(math.Round(value)))
+	case "startdate", "enddate":
+		return formatMonthFromIndex(value)
+	default:
+		return fmt.Sprintf("%.2f", value)
+	}
+}
+
+func formatMonthFromIndex(value float64) string {
+	index := int(math.Round(value))
+	if index < 0 {
+		index = 0
+	}
+	year := index / 12
+	month := index%12 + 1
+	return fmt.Sprintf("%04d-%02d", year, month)
 }
 
 // PrettyFormat formats the forecast results in a human-readable format
@@ -60,18 +79,19 @@ func PrettyFormat(results []forecast.Forecast) {
 	for _, scenario := range results {
 		fmt.Printf("--- Results for scenario %s ---\n", scenario.Name)
 		printEmergencyFundSummary(scenario.Metrics.EmergencyFund)
+		printOptimizationSummary(scenario.Metrics.Optimizations)
 		fmt.Printf("Date    | Liquid Net Worth | Total Net Worth | Notes\n")
 		fmt.Printf("____    | ________________ | _______________ | _____\n")
 
 		for _, date := range dates {
 			liquidDisplay := "—"
 			if liquid, ok := scenario.Liquid[date]; ok {
-				liquidDisplay = "$" + formatCurrency(liquid)
+				liquidDisplay = formatutil.Currency(liquid)
 			}
 
 			totalDisplay := "—"
 			if total, ok := scenario.Data[date]; ok {
-				totalDisplay = "$" + formatCurrency(total)
+				totalDisplay = formatutil.Currency(total)
 			}
 
 			fmt.Printf("%s | %s | %s | ", date, liquidDisplay, totalDisplay)
@@ -88,19 +108,52 @@ func printEmergencyFundSummary(ef *forecast.EmergencyFundRecommendation) {
 	if ef == nil {
 		return
 	}
-	formattedTarget := formatCurrency(ef.TargetAmount)
-	formattedAverage := formatCurrency(ef.AverageMonthlyExpenses)
-	line := fmt.Sprintf("Emergency fund target (%.1f months): $%s", ef.TargetMonths, formattedTarget)
-	line += fmt.Sprintf(" | Avg monthly expenses: $%s", formattedAverage)
+	formattedTarget := formatutil.Currency(ef.TargetAmount)
+	formattedAverage := formatutil.Currency(ef.AverageMonthlyExpenses)
+	line := fmt.Sprintf("Emergency fund target (%.1f months): %s", ef.TargetMonths, formattedTarget)
+	line += fmt.Sprintf(" | Avg monthly expenses: %s", formattedAverage)
 	if ef.FundedMonths > 0 {
 		line += fmt.Sprintf(" | Starting coverage: %.1f months", ef.FundedMonths)
 	}
 	if ef.Shortfall > 0 {
-		line += fmt.Sprintf(" | Shortfall: $%s", formatCurrency(ef.Shortfall))
+		line += fmt.Sprintf(" | Shortfall: %s", formatutil.Currency(ef.Shortfall))
 	} else if ef.Surplus > 0 {
-		line += fmt.Sprintf(" | Surplus: $%s", formatCurrency(ef.Surplus))
+		line += fmt.Sprintf(" | Surplus: %s", formatutil.Currency(ef.Surplus))
 	}
 	fmt.Println(line)
+}
+
+func printOptimizationSummary(summaries []optimization.Summary) {
+	if len(summaries) == 0 {
+		return
+	}
+
+	fmt.Println("Optimization adjustments:")
+	for _, summary := range summaries {
+		original := formatOptimizerValue(summary, true)
+		value := formatOptimizerValue(summary, false)
+		floor := formatutil.Currency(summary.Floor)
+		minimum := formatutil.Currency(summary.MinimumCash)
+		headroom := formatutil.Currency(summary.Headroom)
+		status := "converged"
+		if !summary.Converged {
+			status = "not converged"
+		}
+		fmt.Printf(" - %s (%s): %s -> %s | floor %s | min cash %s | headroom %s | iterations %d (%s)\n",
+			summary.TargetName,
+			summary.Field,
+			original,
+			value,
+			floor,
+			minimum,
+			headroom,
+			summary.Iterations,
+			status,
+		)
+		if len(summary.Notes) > 0 {
+			fmt.Printf("   Notes: %s\n", strings.Join(summary.Notes, "; "))
+		}
+	}
 }
 
 // CsvFormat outputs in comma-separated value format.

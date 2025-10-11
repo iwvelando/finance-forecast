@@ -12,6 +12,7 @@ import (
 	"github.com/iwvelando/finance-forecast/pkg/adapters"
 	"github.com/iwvelando/finance-forecast/pkg/datetime"
 	"github.com/iwvelando/finance-forecast/pkg/finance"
+	"github.com/iwvelando/finance-forecast/pkg/optimization"
 	"go.uber.org/zap"
 )
 
@@ -27,6 +28,7 @@ type Forecast struct {
 // ForecastMetrics aggregates supplementary scenario insights.
 type ForecastMetrics struct {
 	EmergencyFund *EmergencyFundRecommendation
+	Optimizations []optimization.Summary
 }
 
 // EmergencyFundRecommendation summarizes the emergency fund target for a scenario.
