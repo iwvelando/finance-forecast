@@ -72,7 +72,6 @@ let editorPersistenceHandlersRegistered = false;
 let chartResizeFrame = null;
 let stickyInlineErrorEl = null;
 let stickyInlineErrorAnchor = null;
-const sectionHighlightTimers = new WeakMap();
 const THEME_STORAGE_KEY = "financeForecast.theme";
 const EDITOR_STORAGE_KEY = "financeForecast.editorState.v1";
 const EDITOR_STORAGE_VERSION = 1;
@@ -1197,47 +1196,6 @@ function scrollResultsToTop(options = {}) {
 	});
 }
 
-function scrollConfigToElement(element, options = {}) {
-	if (!element || typeof element.getBoundingClientRect !== "function") {
-		return;
-	}
-
-	const { behavior = "smooth", offsetEl = null, extraOffset = 12 } = options || {};
-	window.requestAnimationFrame(() => {
-		if (!element.isConnected) {
-			return;
-		}
-		const rect = element.getBoundingClientRect();
-		let stickyOffset = getNumericCSSValue("--workspace-sticky-offset") + getNumericCSSValue("--config-toolbar-offset");
-		if (offsetEl && typeof offsetEl.getBoundingClientRect === "function" && offsetEl.isConnected) {
-			stickyOffset += offsetEl.getBoundingClientRect().height;
-		}
-		const targetTop = rect.top + window.scrollY - stickyOffset - extraOffset;
-		const clampedTop = Math.max(0, targetTop);
-		window.scrollTo({
-			top: clampedTop,
-			behavior: behavior === "smooth" ? "smooth" : "auto",
-		});
-	});
-}
-
-function temporarilyHighlightSection(element, duration = 1600) {
-	if (!element || !element.classList) {
-		return;
-	}
-	const HIGHLIGHT_CLASS = "scenario-section-highlight";
-	element.classList.add(HIGHLIGHT_CLASS);
-	const existingTimer = sectionHighlightTimers.get(element);
-	if (existingTimer) {
-		window.clearTimeout(existingTimer);
-	}
-	const timer = window.setTimeout(() => {
-		element.classList.remove(HIGHLIGHT_CLASS);
-		sectionHighlightTimers.delete(element);
-	}, Math.max(400, duration));
-	sectionHighlightTimers.set(element, timer);
-}
-
 function clearResultsView() {
 	warningsEl.textContent = "";
 	warningsEl.classList.add("hidden");
@@ -2020,22 +1978,21 @@ function renderScenarioTable() {
 	}
 
 	const scenarioIndex = clampActiveScenarioIndex();
-	const rawScenarioName = forecastDataset.scenarios[scenarioIndex];
-	const scenarioLabel = typeof rawScenarioName === "string" && rawScenarioName.trim() !== ""
-		? rawScenarioName
-		: `Scenario ${scenarioIndex + 1}`;
+	const scenarioName = forecastDataset.scenarios[scenarioIndex] || `Scenario ${scenarioIndex + 1}`;
 
 	const headRow = document.createElement("tr");
 	headRow.classList.add("primary-header-row");
-	const scenarioHeader = createHeaderCell(scenarioLabel);
-	scenarioHeader.colSpan = 4;
+	headRow.appendChild(createHeaderCell("Date"));
+
+	const scenarioHeader = createHeaderCell(scenarioName);
+	scenarioHeader.colSpan = 3;
 	scenarioHeader.classList.add("scenario-heading");
 	headRow.appendChild(scenarioHeader);
 	tableHead.appendChild(headRow);
 
 	const subHeadRow = document.createElement("tr");
 	subHeadRow.classList.add("secondary-header-row");
-	subHeadRow.appendChild(createHeaderCell("Date", "subhead"));
+	subHeadRow.appendChild(createHeaderCell("", "subhead"));
 	subHeadRow.appendChild(createHeaderCell("Liquid Net Worth", "subhead"));
 	subHeadRow.appendChild(createHeaderCell("Total Net Worth", "subhead"));
 	subHeadRow.appendChild(createHeaderCell("Notes", "subhead"));
@@ -2769,40 +2726,20 @@ function renderConfigEditor() {
 		maxLength: 7,
 	}));
 	commonSection.body.appendChild(commonGrid);
-	const commonEventsSection = createEventCollection(currentConfig.common.events, "common.events", {
+	commonSection.body.appendChild(createEventCollection(currentConfig.common.events, "common.events", {
 		heading: "Common events",
 		titlePrefix: "Event",
 		addLabel: "Add common event",
 		headingClass: "sticky-heading",
-		navTargetId: "common-events",
-	});
-	const commonLoansSection = createLoanCollection(currentConfig.common.loans, "common.loans", {
+	}));
+	commonSection.body.appendChild(createLoanCollection(currentConfig.common.loans, "common.loans", {
 		heading: "Common loans",
 		addLabel: "Add common loan",
-		headingClass: "sticky-heading",
-		navTargetId: "common-loans",
-	});
-	const commonInvestmentsSection = createInvestmentCollection(currentConfig.common.investments, "common.investments", {
+	}));
+	commonSection.body.appendChild(createInvestmentCollection(currentConfig.common.investments, "common.investments", {
 		heading: "Common investments",
 		addLabel: "Add common investment",
-		headingClass: "sticky-heading",
-		navTargetId: "common-investments",
-	});
-	commonSection.body.appendChild(commonEventsSection);
-	commonSection.body.appendChild(commonLoansSection);
-	commonSection.body.appendChild(commonInvestmentsSection);
-
-	const commonNavSections = [
-		{ id: "common-events", label: "Events", element: commonEventsSection, count: Array.isArray(currentConfig.common?.events) ? currentConfig.common.events.length : 0 },
-		{ id: "common-loans", label: "Loans", element: commonLoansSection, count: Array.isArray(currentConfig.common?.loans) ? currentConfig.common.loans.length : 0 },
-		{ id: "common-investments", label: "Investments", element: commonInvestmentsSection, count: Array.isArray(currentConfig.common?.investments) ? currentConfig.common.investments.length : 0 },
-	];
-	[commonEventsSection, commonLoansSection, commonInvestmentsSection].forEach((section) => {
-		const heading = section ? section.querySelector(".sticky-heading") || section.querySelector("h4") : null;
-		if (heading) {
-			attachSectionNavigationToHeading(heading, commonNavSections);
-		}
-	});
+	}));
 	configEditorRoot.appendChild(commonSection.section);
 
 	const scenariosSection = createSection("Scenarios", "Create alternative projections with unique events and loans.");
@@ -2881,8 +2818,6 @@ function generateDuplicateScenarioName(originalName) {
 function createScenarioCard(scenario, index) {
 	const card = document.createElement("div");
 	card.className = "editor-card";
-	card.dataset.scenarioIndex = String(index);
-	card.id = `scenario-card-${index + 1}`;
 
 	const duplicateScenario = () => {
 		if (!Array.isArray(currentConfig?.scenarios)) {
@@ -2954,154 +2889,28 @@ function createScenarioCard(scenario, index) {
 	}));
 	card.appendChild(grid);
 
-	const scenarioKey = `scenario-${index + 1}`;
-	const eventsSectionId = `${scenarioKey}-events`;
-	const loansSectionId = `${scenarioKey}-loans`;
-	const investmentsSectionId = `${scenarioKey}-investments`;
-	const scenarioEvents = Array.isArray(scenario.events) ? scenario.events : [];
-	const scenarioLoans = Array.isArray(scenario.loans) ? scenario.loans : [];
-	const scenarioInvestments = Array.isArray(scenario.investments) ? scenario.investments : [];
-
-	const eventsSection = createEventCollection(scenarioEvents, `scenarios[${index}].events`, {
+	card.appendChild(createEventCollection(scenario.events, `scenarios[${index}].events`, {
 		heading: "Scenario events",
 		titlePrefix: "Event",
 		addLabel: "Add event",
-		navTargetId: eventsSectionId,
-	});
+	}));
 
-	const loansSection = createLoanCollection(scenarioLoans, `scenarios[${index}].loans`, {
+	card.appendChild(createLoanCollection(scenario.loans, `scenarios[${index}].loans`, {
 		heading: "Scenario loans",
 		addLabel: "Add loan",
-		navTargetId: loansSectionId,
-	});
+	}));
 
-	const investmentsSection = createInvestmentCollection(scenarioInvestments, `scenarios[${index}].investments`, {
+	card.appendChild(createInvestmentCollection(scenario.investments || [], `scenarios[${index}].investments`, {
 		heading: "Scenario investments",
 		addLabel: "Add investment",
-		navTargetId: investmentsSectionId,
-	});
-
-	const navSections = [
-		{ id: eventsSectionId, label: "Events", element: eventsSection, count: scenarioEvents.length },
-		{ id: loansSectionId, label: "Loans", element: loansSection, count: scenarioLoans.length },
-		{ id: investmentsSectionId, label: "Investments", element: investmentsSection, count: scenarioInvestments.length },
-	];
-	const nav = createSectionNavigation(navSections, header);
-	if (nav) {
-		const totalScenarios = Array.isArray(currentConfig?.scenarios) ? currentConfig.scenarios.length : 0;
-		if (index < totalScenarios - 1) {
-			const nextButton = document.createElement("button");
-			nextButton.type = "button";
-			nextButton.className = "section-nav__button section-nav__button--next";
-			nextButton.textContent = "Next scenario";
-			nextButton.setAttribute("aria-label", "Jump to next scenario");
-			nextButton.addEventListener("click", () => {
-				closeActiveHelpTooltip();
-				const nextCard = configPanel
-					? configPanel.querySelector(`.editor-card[data-scenario-index="${index + 1}"]`)
-					: null;
-				if (nextCard) {
-					const nextHeader = nextCard.querySelector(".scenario-card-header") || nextCard;
-					scrollConfigToElement(nextHeader, { behavior: "smooth", offsetEl: header });
-					temporarilyHighlightSection(nextCard);
-				}
-			});
-			nav.appendChild(nextButton);
-		}
-		header.appendChild(nav);
-	}
-
-	card.appendChild(eventsSection);
-	card.appendChild(loansSection);
-	card.appendChild(investmentsSection);
+	}));
 
 	return card;
-}
-
-function createSectionNavigation(sections, anchorEl) {
-	const validSections = Array.isArray(sections)
-		? sections.filter((section) => section && section.element)
-		: [];
-	if (validSections.length === 0) {
-		return null;
-	}
-
-	const nav = document.createElement("div");
-	nav.className = "section-nav";
-	nav.setAttribute("role", "navigation");
-	nav.setAttribute("aria-label", "Section navigation");
-
-	validSections.forEach((section) => {
-		const button = document.createElement("button");
-		button.type = "button";
-		button.className = "section-nav__button";
-		const labelText = typeof section.label === "string" ? section.label : "Section";
-		const count = typeof section.count === "number" ? section.count : null;
-		const buttonLabel = count !== null ? `${labelText} (${count})` : labelText;
-		button.textContent = buttonLabel;
-		if (section.id) {
-			button.setAttribute("aria-controls", section.id);
-		}
-		if (count !== null) {
-			button.setAttribute("aria-label", `${labelText} section (${count})`);
-		} else {
-			button.setAttribute("aria-label", `${labelText} section`);
-		}
-		button.addEventListener("click", () => {
-			closeActiveHelpTooltip();
-			const targetElement = section.scrollTarget && section.scrollTarget.isConnected ? section.scrollTarget : section.element;
-			if (targetElement) {
-				const offsetElement = anchorEl && anchorEl.isConnected ? anchorEl : null;
-				scrollConfigToElement(targetElement, { behavior: "smooth", offsetEl: offsetElement });
-			}
-			const highlightTarget = section.highlightTarget && section.highlightTarget.isConnected ? section.highlightTarget : section.element;
-			if (highlightTarget) {
-				temporarilyHighlightSection(highlightTarget);
-			}
-		});
-		nav.appendChild(button);
-	});
-
-	return nav;
-}
-
-function attachSectionNavigationToHeading(headingEl, sections) {
-	if (!headingEl) {
-		return;
-	}
-	const nav = createSectionNavigation(sections, headingEl);
-	if (!nav) {
-		return;
-	}
-	const existingNav = headingEl.querySelector(".section-nav");
-	if (existingNav) {
-		existingNav.remove();
-	}
-	const headingLabel = headingEl.dataset.headingLabel || headingEl.textContent.trim();
-	if (headingEl.classList.contains("sticky-heading")) {
-		let titleSpan = headingEl.querySelector(".sticky-heading__title");
-		if (!titleSpan) {
-			titleSpan = document.createElement("span");
-			titleSpan.className = "sticky-heading__title";
-			headingEl.textContent = "";
-			titleSpan.textContent = headingLabel || "";
-			headingEl.appendChild(titleSpan);
-		} else if (headingLabel) {
-			titleSpan.textContent = headingLabel;
-		}
-		headingEl.classList.add("sticky-heading--with-nav");
-		headingEl.appendChild(nav);
-	} else {
-		headingEl.insertAdjacentElement("afterend", nav);
-	}
 }
 
 function createEventCollection(events, basePath, options = {}) {
 	const container = document.createElement("div");
 	container.className = "editor-subsection";
-	if (options.navTargetId) {
-		container.id = options.navTargetId;
-	}
 	if (options.headingClass && options.headingClass.indexOf("sticky-heading") !== -1) {
 		container.classList.add("sticky-heading-container");
 	}
@@ -3111,15 +2920,6 @@ function createEventCollection(events, basePath, options = {}) {
 		heading.textContent = options.heading;
 		if (options.headingClass) {
 			heading.classList.add(options.headingClass);
-		}
-		heading.dataset.headingLabel = options.heading;
-		if (options.headingId) {
-			heading.id = options.headingId;
-		} else if (options.navTargetId) {
-			heading.id = `${options.navTargetId}-heading`;
-		}
-		if (heading.id && options.navTargetId) {
-			container.setAttribute("aria-labelledby", heading.id);
 		}
 		container.appendChild(heading);
 	}
@@ -3540,22 +3340,10 @@ function createEventCard(event, basePath, index, options = {}, onRemove) {
 function createLoanCollection(loans, basePath, options = {}) {
 	const container = document.createElement("div");
 	container.className = "editor-subsection";
-	if (options.navTargetId) {
-		container.id = options.navTargetId;
-	}
 
 	if (options.heading) {
 		const heading = document.createElement("h4");
 		heading.textContent = options.heading;
-		heading.dataset.headingLabel = options.heading;
-		if (options.headingId) {
-			heading.id = options.headingId;
-		} else if (options.navTargetId) {
-			heading.id = `${options.navTargetId}-heading`;
-		}
-		if (heading.id && options.navTargetId) {
-			container.setAttribute("aria-labelledby", heading.id);
-		}
 		container.appendChild(heading);
 	}
 
@@ -3598,22 +3386,10 @@ function createLoanCollection(loans, basePath, options = {}) {
 function createInvestmentCollection(investments, basePath, options = {}) {
 	const container = document.createElement("div");
 	container.className = "editor-subsection";
-	if (options.navTargetId) {
-		container.id = options.navTargetId;
-	}
 
 	if (options.heading) {
 		const heading = document.createElement("h4");
 		heading.textContent = options.heading;
-		heading.dataset.headingLabel = options.heading;
-		if (options.headingId) {
-			heading.id = options.headingId;
-		} else if (options.navTargetId) {
-			heading.id = `${options.navTargetId}-heading`;
-		}
-		if (heading.id && options.navTargetId) {
-			container.setAttribute("aria-labelledby", heading.id);
-		}
 		container.appendChild(heading);
 	}
 
@@ -3646,14 +3422,10 @@ function createInvestmentCollection(investments, basePath, options = {}) {
 	const addButton = document.createElement("button");
 	addButton.type = "button";
 	addButton.textContent = options.addLabel || "Add investment";
-	if (options.headingClass && options.headingClass.indexOf("sticky-heading") !== -1) {
-		container.classList.add("sticky-heading-container");
-	}
 	addButton.addEventListener("click", () => {
 		investments.push(createEmptyInvestment());
 		renderConfigEditor();
 		switchTab("config");
-		heading.dataset.headingLabel = options.heading;
 	});
 	actions.appendChild(addButton);
 	container.appendChild(actions);
@@ -3662,9 +3434,6 @@ function createInvestmentCollection(investments, basePath, options = {}) {
 }
 
 function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove) {
-		if (options.headingClass) {
-			heading.classList.add(options.headingClass);
-		}
 	const card = document.createElement("div");
 	card.className = "editor-card";
 
@@ -3937,14 +3706,10 @@ function createCardHeader(titleText, onRemove, removeLabel, options = {}) {
 	if (options.extraClass) {
 		header.classList.add(options.extraClass);
 	}
-	if (options.headingClass && options.headingClass.indexOf("sticky-heading") !== -1) {
-		container.classList.add("sticky-heading-container");
-	}
 
 	const title = document.createElement("h4");
 	title.textContent = titleText;
 	header.appendChild(title);
-		heading.dataset.headingLabel = options.heading;
 
 	const extraActions = Array.isArray(options.extraActions) ? options.extraActions : [];
 	const shouldRenderActions = typeof onRemove === "function" || extraActions.length > 0;
@@ -3953,9 +3718,6 @@ function createCardHeader(titleText, onRemove, removeLabel, options = {}) {
 		actions.className = "editor-inline-actions";
 		extraActions.forEach((action) => {
 			if (!action || typeof action.onClick !== "function") {
-		if (options.headingClass) {
-			heading.classList.add(options.headingClass);
-		}
 				return;
 			}
 			const button = document.createElement("button");

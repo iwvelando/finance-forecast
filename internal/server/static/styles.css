@@ -688,7 +688,7 @@ h4.sticky-heading .sticky-inline-alert {
 }
 
 .note-list {
-    margin: 0;
+    margin: 0.25rem 0 0;
     padding-left: 1.25rem;
     color: rgba(27, 31, 59, 0.7);
     font-size: 0.9rem;
@@ -1330,138 +1330,6 @@ h4.sticky-heading .sticky-inline-alert {
     justify-content: space-between;
     align-items: center;
     gap: 1rem;
-}
-
-.scenario-card-header {
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.35rem 1rem;
-}
-
-.scenario-card-header h4 {
-    flex: 1 1 auto;
-}
-
-.scenario-card-header .editor-inline-actions {
-    flex-shrink: 0;
-}
-
-.section-nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    width: 100%;
-    margin-top: 0.25rem;
-}
-
-.section-nav__button {
-    padding: 0.45rem 0.85rem;
-    border-radius: 999px;
-    border: none;
-    background: rgba(59, 130, 246, 0.12);
-    color: #163d74;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
-}
-
-.section-nav__button--next {
-    background: rgba(59, 130, 246, 0.18);
-    color: #12345b;
-}
-
-.section-nav__button:hover,
-.section-nav__button:focus-visible {
-    background: rgba(37, 99, 235, 0.2);
-    color: #0b2c66;
-    transform: translateY(-1px);
-}
-
-.section-nav__button--next:hover,
-.section-nav__button--next:focus-visible {
-    background: rgba(29, 78, 216, 0.26);
-}
-
-.section-nav__button:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(58, 123, 213, 0.35);
-}
-
-.section-nav__button:active {
-    transform: translateY(0);
-}
-
-.theme-dark .section-nav__button {
-    background: rgba(96, 165, 250, 0.18);
-    color: #dbeafe;
-}
-
-.theme-dark .section-nav__button:hover,
-.theme-dark .section-nav__button:focus-visible {
-    background: rgba(96, 165, 250, 0.28);
-    color: #eff6ff;
-}
-
-.theme-dark .section-nav__button--next {
-    background: rgba(96, 165, 250, 0.24);
-    color: #e2e8f0;
-}
-
-.theme-dark .section-nav__button--next:hover,
-.theme-dark .section-nav__button--next:focus-visible {
-    background: rgba(96, 165, 250, 0.34);
-}
-
-.sticky-heading--with-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-}
-
-.sticky-heading--with-nav .sticky-heading__title {
-    font: inherit;
-}
-
-.sticky-heading--with-nav .section-nav {
-    margin-top: 0;
-}
-
-.scenario-section-highlight {
-    animation: scenario-section-highlight 1.4s ease-out;
-}
-
-@keyframes scenario-section-highlight {
-    0% {
-        outline: 3px solid rgba(59, 130, 246, 0.4);
-        outline-offset: 2px;
-    }
-    60% {
-        outline: 2px solid rgba(59, 130, 246, 0.3);
-        outline-offset: 2px;
-    }
-    100% {
-        outline: 0 solid transparent;
-        outline-offset: 6px;
-    }
-}
-
-.theme-dark .scenario-section-highlight {
-    animation: scenario-section-highlight-dark 1.4s ease-out;
-}
-
-@keyframes scenario-section-highlight-dark {
-    0% {
-        outline: 3px solid rgba(147, 197, 253, 0.45);
-        outline-offset: 2px;
-    }
-    60% {
-        outline: 2px solid rgba(147, 197, 253, 0.32);
-        outline-offset: 2px;
-    }
-    100% {
-        outline: 0 solid transparent;
-        outline-offset: 6px;
-    }
 }
 
 .editor-card-header h4 {
