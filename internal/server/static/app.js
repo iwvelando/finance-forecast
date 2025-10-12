@@ -2977,28 +2977,54 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 
 	const header = document.createElement("div");
 	header.className = "editor-optimizer__header";
-	const heading = document.createElement("h5");
-	heading.textContent = "Optimizer";
-	header.appendChild(heading);
+	const labelEl = document.createElement("span");
+	labelEl.className = "editor-optimizer__label";
+	labelEl.textContent = "Optimizer";
+	header.appendChild(labelEl);
+	section.appendChild(header);
+
+	const initialHasOptimizer = Boolean(event && typeof event.optimize === "object");
+	const initialField = normalizeOptimizerField(initialHasOptimizer && event.optimize?.field ? event.optimize.field : "amount");
+	const resolveTooltipMessage = (hasOptimizer, fieldKey) => {
+		if (!optimizerEnabled) {
+			return "Turn on Run optimizer in the toolbar to adjust this event automatically.";
+		}
+		if (!hasOptimizer) {
+			return "Enable the optimizer to adjust this event while keeping cash above the emergency-fund floor.";
+		}
+		return getOptimizerFieldDescription(fieldKey);
+	};
+
+	const initialTooltipMessage = resolveTooltipMessage(initialHasOptimizer, initialField);
+	const helpElements = attachFieldHelp({
+		wrapper: section,
+		labelEl,
+		tooltipText: initialTooltipMessage,
+		label: "Optimizer",
+	});
+	const updateHelpTooltip = (message) => {
+		const content = message || "Optimizer details";
+		if (helpElements?.tooltip) {
+			helpElements.tooltip.textContent = content;
+		}
+		if (helpElements?.trigger) {
+			helpElements.trigger.setAttribute("aria-label", "Optimizer info");
+		}
+	};
 
 	const toggleLabel = document.createElement("label");
 	toggleLabel.className = "editor-optimizer__toggle";
-	toggleLabel.title = "Allow the optimizer to adjust this event automatically.";
 	const toggleInput = document.createElement("input");
 	toggleInput.type = "checkbox";
-	const hasOptimizer = Boolean(event && typeof event.optimize === "object");
-	toggleInput.checked = hasOptimizer;
+	toggleInput.checked = initialHasOptimizer;
 	toggleInput.disabled = !optimizerEnabled;
+	toggleInput.setAttribute("aria-label", initialHasOptimizer ? "Disable optimizer for this event" : "Enable optimizer for this event");
 	toggleLabel.appendChild(toggleInput);
 	const toggleText = document.createElement("span");
+	toggleText.className = "editor-optimizer__toggle-text";
 	toggleText.textContent = "Enable";
 	toggleLabel.appendChild(toggleText);
 	header.appendChild(toggleLabel);
-	section.appendChild(header);
-
-	const statusEl = document.createElement("p");
-	statusEl.className = "muted-text editor-optimizer__status";
-	section.appendChild(statusEl);
 
 	const optimizerPathPrefix = `${basePath}.optimize`;
 
@@ -3016,21 +3042,23 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 		const hasOptimizer = Boolean(event && typeof event.optimize === "object");
 		toggleInput.disabled = !optimizerEnabled;
 		toggleInput.checked = hasOptimizer;
+		section.classList.toggle("editor-optimizer--has-config", hasOptimizer);
 
-		if (!optimizerEnabled) {
-			statusEl.textContent = "Turn on Run optimizer in the toolbar to adjust this event automatically.";
+		const normalizedField = hasOptimizer && event.optimize ? normalizeOptimizerField(event.optimize.field) : initialField;
+		const message = resolveTooltipMessage(hasOptimizer, normalizedField);
+		toggleLabel.title = message || "";
+		if (hasOptimizer) {
+			toggleInput.setAttribute("aria-label", "Disable optimizer for this event");
+		} else {
+			toggleInput.setAttribute("aria-label", optimizerEnabled ? "Enable optimizer for this event" : "Optimizer disabled while Run optimizer is off");
+		}
+		updateHelpTooltip(message);
+
+		if (!optimizerEnabled || !hasOptimizer) {
 			return;
 		}
 
-		if (!hasOptimizer) {
-			statusEl.textContent = "Enable the optimizer to adjust this event while keeping cash above the emergency-fund floor.";
-			return;
-		}
-
-		const initialField = event.optimize && event.optimize.field ? event.optimize.field : "amount";
-		const optimizerConfig = ensureOptimizerDefaults(event, initialField);
-		const normalizedField = normalizeOptimizerField(optimizerConfig.field);
-		statusEl.textContent = getOptimizerFieldDescription(normalizedField);
+		const optimizerConfig = ensureOptimizerDefaults(event, normalizedField);
 
 		const optimizerGrid = document.createElement("div");
 		optimizerGrid.className = "editor-grid editor-optimizer__grid";

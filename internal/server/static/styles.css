@@ -1268,18 +1268,19 @@ h4.sticky-heading .sticky-inline-alert {
 }
 
 .editor-optimizer {
-    border: 1px dashed rgba(58, 123, 213, 0.45);
-    background: rgba(58, 123, 213, 0.08);
-    border-radius: 12px;
-    padding: 1rem 1.25rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    padding: 0.25rem 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    position: relative;
 }
 
 .theme-dark .editor-optimizer {
-    border-color: rgba(96, 165, 250, 0.35);
-    background: rgba(59, 130, 246, 0.16);
+    border: none;
+    background: transparent;
 }
 
 .editor-optimizer--global-disabled {
@@ -1294,10 +1295,10 @@ h4.sticky-heading .sticky-inline-alert {
     gap: 0.75rem;
 }
 
-.editor-optimizer__header h5 {
-    margin: 0;
+.editor-optimizer__label {
     font-size: 0.95rem;
     font-weight: 600;
+    color: inherit;
 }
 
 .editor-optimizer__toggle {
@@ -1308,16 +1309,17 @@ h4.sticky-heading .sticky-inline-alert {
     cursor: pointer;
 }
 
+.editor-optimizer__toggle-text {
+    font-size: 0.95rem;
+}
+
 .editor-optimizer__toggle input {
     width: auto;
     min-width: 18px;
     min-height: 18px;
 }
 
-.editor-optimizer__status {
-    margin: 0;
-    font-size: 0.9rem;
-}
+
 
 .editor-optimizer__grid {
     gap: 1rem;
