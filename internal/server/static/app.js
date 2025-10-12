@@ -2779,30 +2779,51 @@ function renderConfigEditor() {
 	const commonLoansSection = createLoanCollection(currentConfig.common.loans, "common.loans", {
 		heading: "Common loans",
 		addLabel: "Add common loan",
-		headingClass: "sticky-heading",
 		navTargetId: "common-loans",
 	});
 	const commonInvestmentsSection = createInvestmentCollection(currentConfig.common.investments, "common.investments", {
 		heading: "Common investments",
 		addLabel: "Add common investment",
-		headingClass: "sticky-heading",
 		navTargetId: "common-investments",
 	});
 	commonSection.body.appendChild(commonEventsSection);
 	commonSection.body.appendChild(commonLoansSection);
 	commonSection.body.appendChild(commonInvestmentsSection);
 
-	const commonNavSections = [
-		{ id: "common-events", label: "Events", element: commonEventsSection, count: Array.isArray(currentConfig.common?.events) ? currentConfig.common.events.length : 0 },
-		{ id: "common-loans", label: "Loans", element: commonLoansSection, count: Array.isArray(currentConfig.common?.loans) ? currentConfig.common.loans.length : 0 },
-		{ id: "common-investments", label: "Investments", element: commonInvestmentsSection, count: Array.isArray(currentConfig.common?.investments) ? currentConfig.common.investments.length : 0 },
-	];
-	[commonEventsSection, commonLoansSection, commonInvestmentsSection].forEach((section) => {
-		const heading = section ? section.querySelector(".sticky-heading") || section.querySelector("h4") : null;
-		if (heading) {
-			attachSectionNavigationToHeading(heading, commonNavSections);
+	const commonEventsHeading = commonEventsSection.querySelector(".sticky-heading") || commonEventsSection.querySelector("h4");
+	if (commonEventsHeading) {
+		const commonNavSections = [
+			{ id: "common-events", label: "Events", element: commonEventsSection, count: Array.isArray(currentConfig.common?.events) ? currentConfig.common.events.length : 0 },
+			{ id: "common-loans", label: "Loans", element: commonLoansSection, count: Array.isArray(currentConfig.common?.loans) ? currentConfig.common.loans.length : 0 },
+			{ id: "common-investments", label: "Investments", element: commonInvestmentsSection, count: Array.isArray(currentConfig.common?.investments) ? currentConfig.common.investments.length : 0 },
+		];
+		const commonNav = createSectionNavigation(commonNavSections, commonEventsHeading);
+		if (commonNav) {
+			const existingNav = commonEventsHeading.querySelector(".section-nav");
+			if (existingNav) {
+				existingNav.remove();
+			}
+			if (commonEventsHeading.classList.contains("sticky-heading")) {
+				const headingText = commonEventsHeading.dataset.headingLabel || (commonEventsHeading.textContent ? commonEventsHeading.textContent.trim() : "");
+				if (!commonEventsHeading.classList.contains("sticky-heading--with-nav")) {
+					const titleSpan = document.createElement("span");
+					titleSpan.className = "sticky-heading__title";
+					titleSpan.textContent = headingText;
+					commonEventsHeading.textContent = "";
+					commonEventsHeading.appendChild(titleSpan);
+					commonEventsHeading.classList.add("sticky-heading--with-nav");
+				} else {
+					const titleSpan = commonEventsHeading.querySelector(".sticky-heading__title");
+					if (titleSpan && typeof titleSpan.textContent === "string" && titleSpan.textContent.trim() === "" && headingText) {
+						titleSpan.textContent = headingText;
+					}
+				}
+				commonEventsHeading.appendChild(commonNav);
+			} else {
+				commonEventsHeading.insertAdjacentElement("afterend", commonNav);
+			}
 		}
-	});
+	}
 	configEditorRoot.appendChild(commonSection.section);
 
 	const scenariosSection = createSection("Scenarios", "Create alternative projections with unique events and loans.");
@@ -3063,37 +3084,6 @@ function createSectionNavigation(sections, anchorEl) {
 	});
 
 	return nav;
-}
-
-function attachSectionNavigationToHeading(headingEl, sections) {
-	if (!headingEl) {
-		return;
-	}
-	const nav = createSectionNavigation(sections, headingEl);
-	if (!nav) {
-		return;
-	}
-	const existingNav = headingEl.querySelector(".section-nav");
-	if (existingNav) {
-		existingNav.remove();
-	}
-	const headingLabel = headingEl.dataset.headingLabel || headingEl.textContent.trim();
-	if (headingEl.classList.contains("sticky-heading")) {
-		let titleSpan = headingEl.querySelector(".sticky-heading__title");
-		if (!titleSpan) {
-			titleSpan = document.createElement("span");
-			titleSpan.className = "sticky-heading__title";
-			headingEl.textContent = "";
-			titleSpan.textContent = headingLabel || "";
-			headingEl.appendChild(titleSpan);
-		} else if (headingLabel) {
-			titleSpan.textContent = headingLabel;
-		}
-		headingEl.classList.add("sticky-heading--with-nav");
-		headingEl.appendChild(nav);
-	} else {
-		headingEl.insertAdjacentElement("afterend", nav);
-	}
 }
 
 function createEventCollection(events, basePath, options = {}) {
@@ -3646,14 +3636,10 @@ function createInvestmentCollection(investments, basePath, options = {}) {
 	const addButton = document.createElement("button");
 	addButton.type = "button";
 	addButton.textContent = options.addLabel || "Add investment";
-	if (options.headingClass && options.headingClass.indexOf("sticky-heading") !== -1) {
-		container.classList.add("sticky-heading-container");
-	}
 	addButton.addEventListener("click", () => {
 		investments.push(createEmptyInvestment());
 		renderConfigEditor();
 		switchTab("config");
-		heading.dataset.headingLabel = options.heading;
 	});
 	actions.appendChild(addButton);
 	container.appendChild(actions);
@@ -3662,9 +3648,6 @@ function createInvestmentCollection(investments, basePath, options = {}) {
 }
 
 function createInvestmentCard(investment, basePath, index, titlePrefix, onRemove) {
-		if (options.headingClass) {
-			heading.classList.add(options.headingClass);
-		}
 	const card = document.createElement("div");
 	card.className = "editor-card";
 
@@ -3937,14 +3920,10 @@ function createCardHeader(titleText, onRemove, removeLabel, options = {}) {
 	if (options.extraClass) {
 		header.classList.add(options.extraClass);
 	}
-	if (options.headingClass && options.headingClass.indexOf("sticky-heading") !== -1) {
-		container.classList.add("sticky-heading-container");
-	}
 
 	const title = document.createElement("h4");
 	title.textContent = titleText;
 	header.appendChild(title);
-		heading.dataset.headingLabel = options.heading;
 
 	const extraActions = Array.isArray(options.extraActions) ? options.extraActions : [];
 	const shouldRenderActions = typeof onRemove === "function" || extraActions.length > 0;
@@ -3953,9 +3932,6 @@ function createCardHeader(titleText, onRemove, removeLabel, options = {}) {
 		actions.className = "editor-inline-actions";
 		extraActions.forEach((action) => {
 			if (!action || typeof action.onClick !== "function") {
-		if (options.headingClass) {
-			heading.classList.add(options.headingClass);
-		}
 				return;
 			}
 			const button = document.createElement("button");
@@ -5115,3 +5091,4 @@ async function initializeVersionFooter() {
 		console.warn("Unable to load application version.", error);
 	}
 }
+
