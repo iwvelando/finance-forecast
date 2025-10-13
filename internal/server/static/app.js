@@ -2769,69 +2769,64 @@ function renderConfigEditor() {
 		maxLength: 7,
 	}));
 	commonSection.body.appendChild(commonGrid);
-	const commonEventsSection = createEventCollection(currentConfig.common.events, "common.events", {
-		heading: "Common events",
-		titlePrefix: "Event",
-		addLabel: "Add common event",
-		headingClass: "sticky-heading",
-		navTargetId: "common-events",
-	});
-	const commonLoansSection = createLoanCollection(currentConfig.common.loans, "common.loans", {
-		heading: "Common loans",
-		addLabel: "Add common loan",
-		navTargetId: "common-loans",
-	});
-	const commonInvestmentsSection = createInvestmentCollection(currentConfig.common.investments, "common.investments", {
-		heading: "Common investments",
-		addLabel: "Add common investment",
-		navTargetId: "common-investments",
-	});
-	commonSection.body.appendChild(commonEventsSection);
-	commonSection.body.appendChild(commonLoansSection);
-	commonSection.body.appendChild(commonInvestmentsSection);
-
-	const commonEventsHeading = commonEventsSection.querySelector(".sticky-heading") || commonEventsSection.querySelector("h4");
-	if (commonEventsHeading) {
-		const commonNavSections = [
-			{ id: "common-events", label: "Events", element: commonEventsSection, count: Array.isArray(currentConfig.common?.events) ? currentConfig.common.events.length : 0 },
-			{ id: "common-loans", label: "Loans", element: commonLoansSection, count: Array.isArray(currentConfig.common?.loans) ? currentConfig.common.loans.length : 0 },
-			{ id: "common-investments", label: "Investments", element: commonInvestmentsSection, count: Array.isArray(currentConfig.common?.investments) ? currentConfig.common.investments.length : 0 },
-		];
-		const commonNav = createSectionNavigation(commonNavSections, commonEventsHeading);
-		if (commonNav) {
-			const existingNav = commonEventsHeading.querySelector(".section-nav");
-			if (existingNav) {
-				existingNav.remove();
-			}
-			if (commonEventsHeading.classList.contains("sticky-heading")) {
-				const headingText = commonEventsHeading.dataset.headingLabel || (commonEventsHeading.textContent ? commonEventsHeading.textContent.trim() : "");
-				if (!commonEventsHeading.classList.contains("sticky-heading--with-nav")) {
-					const titleSpan = document.createElement("span");
-					titleSpan.className = "sticky-heading__title";
-					titleSpan.textContent = headingText;
-					commonEventsHeading.textContent = "";
-					commonEventsHeading.appendChild(titleSpan);
-					commonEventsHeading.classList.add("sticky-heading--with-nav");
-				} else {
-					const titleSpan = commonEventsHeading.querySelector(".sticky-heading__title");
-					if (titleSpan && typeof titleSpan.textContent === "string" && titleSpan.textContent.trim() === "" && headingText) {
-						titleSpan.textContent = headingText;
-					}
-				}
-				commonEventsHeading.appendChild(commonNav);
-			} else {
-				commonEventsHeading.insertAdjacentElement("afterend", commonNav);
-			}
-		}
-	}
 	configEditorRoot.appendChild(commonSection.section);
 
-	const scenariosSection = createSection("Scenarios", "Create alternative projections with unique events and loans.");
+	const scenariosSection = createSection("Scenarios", "Manage the shared common configuration alongside alternative scenario variants.");
 	const scenariosContainer = document.createElement("div");
 	scenariosContainer.className = "editor-collection";
 
-	currentConfig.scenarios.forEach((scenario, index) => {
-		const card = createScenarioCard(scenario, index);
+	const actualScenarios = Array.isArray(currentConfig.scenarios) ? currentConfig.scenarios : [];
+	const scenarioEntries = [
+		{
+			scenario: currentConfig.common,
+			options: {
+				isCommon: true,
+				basePath: "common",
+				navPrefix: "common",
+				eventsNavId: "common-events",
+				loansNavId: "common-loans",
+				investmentsNavId: "common-investments",
+				headerTitle: "Common configuration",
+				eventsHeading: "Common events",
+				eventAddLabel: "Add common event",
+				loansHeading: "Common loans",
+				loanAddLabel: "Add common loan",
+				investmentsHeading: "Common investments",
+				investmentAddLabel: "Add common investment",
+				cardId: "common-config-card",
+				displayIndex: 0,
+			},
+		},
+		...actualScenarios.map((scenario, index) => ({
+			scenario,
+			options: {
+				scenarioIndex: index,
+				basePath: `scenarios[${index}]`,
+				displayIndex: index + 1,
+				navPrefix: `scenario-${index + 1}`,
+				eventsNavId: `scenario-${index + 1}-events`,
+				loansNavId: `scenario-${index + 1}-loans`,
+				investmentsNavId: `scenario-${index + 1}-investments`,
+				eventsHeading: "Scenario events",
+				eventAddLabel: "Add event",
+				loansHeading: "Scenario loans",
+				loanAddLabel: "Add loan",
+				investmentsHeading: "Scenario investments",
+				investmentAddLabel: "Add investment",
+			},
+		})),
+	];
+
+	const totalCollectionCount = scenarioEntries.length;
+
+	scenarioEntries.forEach((entry, collectionIndex) => {
+		const cardOptions = {
+			...entry.options,
+			collectionIndex,
+			totalCollectionCount,
+		};
+		const cardIndex = typeof entry.options.scenarioIndex === "number" ? entry.options.scenarioIndex : collectionIndex;
+		const card = createScenarioCard(entry.scenario, cardIndex, cardOptions);
 		scenariosContainer.appendChild(card);
 	});
 
@@ -2898,128 +2893,208 @@ function generateDuplicateScenarioName(originalName) {
 	return candidate;
 }
 
+function buildScenarioCollections(source, basePath, options = {}) {
+	if (!source || typeof source !== "object") {
+		source = {};
+	}
 
-function createScenarioCard(scenario, index) {
+	if (!Array.isArray(source.events)) {
+		source.events = [];
+	}
+	if (!Array.isArray(source.loans)) {
+		source.loans = [];
+	}
+	if (!Array.isArray(source.investments)) {
+		source.investments = [];
+	}
+
+	const navPrefix = options.navPrefix || basePath.replace(/[^a-zA-Z0-9_-]+/g, "-");
+	const eventsNavId = options.eventsNavId || `${navPrefix}-events`;
+	const loansNavId = options.loansNavId || `${navPrefix}-loans`;
+	const investmentsNavId = options.investmentsNavId || `${navPrefix}-investments`;
+	const allowOptimizer = options.allowOptimizer !== false;
+
+	const eventsSection = createEventCollection(source.events, `${basePath}.events`, {
+		heading: options.eventsHeading || "Events",
+		titlePrefix: options.eventTitlePrefix || "Event",
+		addLabel: options.eventAddLabel || "Add event",
+		headingClass: options.eventsHeadingClass,
+		navTargetId: eventsNavId,
+		allowOptimizer,
+	});
+
+	const loansSection = createLoanCollection(source.loans, `${basePath}.loans`, {
+		heading: options.loansHeading || "Loans",
+		addLabel: options.loanAddLabel || "Add loan",
+		navTargetId: loansNavId,
+	});
+
+	const investmentsSection = createInvestmentCollection(source.investments, `${basePath}.investments`, {
+		heading: options.investmentsHeading || "Investments",
+		addLabel: options.investmentAddLabel || "Add investment",
+		navTargetId: investmentsNavId,
+	});
+
+	const eventsHeading = eventsSection.querySelector(".sticky-heading") || eventsSection.querySelector("h4");
+	const navSections = [
+		{ id: eventsNavId, label: options.eventsNavLabel || "Events", element: eventsSection, count: source.events.length },
+		{ id: loansNavId, label: options.loansNavLabel || "Loans", element: loansSection, count: source.loans.length },
+		{ id: investmentsNavId, label: options.investmentsNavLabel || "Investments", element: investmentsSection, count: source.investments.length },
+	];
+
+	return {
+		eventsSection,
+		loansSection,
+		investmentsSection,
+		navSections,
+		eventsHeading,
+	};
+}
+
+
+function createScenarioCard(scenario, index, options = {}) {
+	const isCommon = Boolean(options.isCommon);
+	const scenarioIndex = typeof options.scenarioIndex === "number" ? options.scenarioIndex : index;
+	const displayIndex = typeof options.displayIndex === "number"
+		? options.displayIndex
+		: (isCommon ? 0 : scenarioIndex + 1);
+	const basePath = typeof options.basePath === "string"
+		? options.basePath
+		: (isCommon ? "common" : `scenarios[${scenarioIndex}]`);
+	const navPrefix = options.navPrefix || (isCommon ? "common" : `scenario-${displayIndex}`);
+	const collectionIndex = typeof options.collectionIndex === "number"
+		? options.collectionIndex
+		: (isCommon ? 0 : displayIndex);
+	const totalCollectionCount = typeof options.totalCollectionCount === "number"
+		? options.totalCollectionCount
+		: (Array.isArray(currentConfig?.scenarios) ? currentConfig.scenarios.length + 1 : 1);
+
 	const card = document.createElement("div");
 	card.className = "editor-card";
-	card.dataset.scenarioIndex = String(index);
-	card.id = `scenario-card-${index + 1}`;
+	card.dataset.collectionIndex = String(collectionIndex);
+	if (!isCommon) {
+		card.dataset.scenarioIndex = String(scenarioIndex);
+		card.id = `scenario-card-${displayIndex}`;
+	} else if (options.cardId) {
+		card.id = options.cardId;
+	}
 
-	const duplicateScenario = () => {
-		if (!Array.isArray(currentConfig?.scenarios)) {
-			return;
-		}
-		const original = currentConfig.scenarios[index];
-		if (!original) {
-			return;
-		}
-		const clone = cloneDeep(original) || createEmptyScenario();
-		clone.name = generateDuplicateScenarioName(original.name);
-		currentConfig.scenarios.splice(index + 1, 0, clone);
-		renderConfigEditor();
-		switchTab("config");
+	let duplicateScenario;
+	let removeScenario;
+	let canRemoveScenario = false;
+
+	if (!isCommon) {
+		duplicateScenario = () => {
+			if (!Array.isArray(currentConfig?.scenarios)) {
+				return;
+			}
+			const original = currentConfig.scenarios[scenarioIndex];
+			if (!original) {
+				return;
+			}
+			const clone = cloneDeep(original) || createEmptyScenario();
+			clone.name = generateDuplicateScenarioName(original.name);
+			currentConfig.scenarios.splice(scenarioIndex + 1, 0, clone);
+			renderConfigEditor();
+			switchTab("config");
+		};
+
+		removeScenario = () => {
+			if (!Array.isArray(currentConfig?.scenarios) || currentConfig.scenarios.length <= 1) {
+				return;
+			}
+			currentConfig.scenarios.splice(scenarioIndex, 1);
+			renderConfigEditor();
+		};
+
+		canRemoveScenario = Array.isArray(currentConfig?.scenarios) && currentConfig.scenarios.length > 1;
+	}
+
+	const headerTitle = isCommon
+		? options.headerTitle || "Common configuration"
+		: (scenario?.name || `Scenario ${displayIndex}`);
+	const headerOptions = {
+		extraClass: isCommon ? "scenario-card-header scenario-card-header--common" : "scenario-card-header",
 	};
+	if (!isCommon) {
+		headerOptions.extraActions = [
+			{
+				label: "Duplicate",
+				onClick: duplicateScenario,
+				tooltip: "Make a copy of this scenario",
+				variant: "secondary",
+			},
+		];
+		headerOptions.removeTooltip = "Remove scenario";
+		headerOptions.removeDisabled = !canRemoveScenario;
+		headerOptions.removeDisabledTooltip = "At least one scenario must remain.";
+	}
 
-	const removeScenario = () => {
-		if (!Array.isArray(currentConfig?.scenarios) || currentConfig.scenarios.length <= 1) {
-			return;
-		}
-		currentConfig.scenarios.splice(index, 1);
-		renderConfigEditor();
-	};
-
-	const canRemoveScenario = Array.isArray(currentConfig?.scenarios) && currentConfig.scenarios.length > 1;
-
-	const { header, title } = createCardHeader(
-		scenario.name || `Scenario ${index + 1}`,
-		removeScenario,
-		"Remove scenario",
-		{
-			extraClass: "scenario-card-header",
-			extraActions: [
-				{
-					label: "Duplicate",
-					onClick: duplicateScenario,
-					tooltip: "Make a copy of this scenario",
-					variant: "secondary",
-				},
-			],
-			removeTooltip: "Remove scenario",
-			removeDisabled: !canRemoveScenario,
-			removeDisabledTooltip: "At least one scenario must remain.",
-		},
-	);
-
+	const removeLabel = !isCommon ? "Remove scenario" : undefined;
+	const removeHandler = !isCommon ? removeScenario : undefined;
+	const { header, title } = createCardHeader(headerTitle, removeHandler, removeLabel, headerOptions);
 	card.appendChild(header);
 
-	const grid = document.createElement("div");
-	grid.className = "editor-grid";
-	grid.appendChild(createInputField({
-		label: "Scenario name",
-		path: `scenarios[${index}].name`,
-		value: scenario.name ?? "",
-		inputType: "text",
-		placeholder: "e.g., Base case",
-		tooltip: "Display name for this scenario in tables and charts.",
-		validation: { type: "text", maxLength: 120 },
-		maxLength: 120,
-		onChange: (value) => {
-			title.textContent = value || `Scenario ${index + 1}`;
-		},
-	}));
-	grid.appendChild(createCheckboxField({
-		label: "Active",
-		path: `scenarios[${index}].active`,
-		value: scenario.active,
-		tooltip: "Toggle whether this scenario participates in the simulation run.",
-	}));
-	card.appendChild(grid);
+	if (!isCommon) {
+		const grid = document.createElement("div");
+		grid.className = "editor-grid";
+		grid.appendChild(createInputField({
+			label: "Scenario name",
+			path: `${basePath}.name`,
+			value: scenario?.name ?? "",
+			inputType: "text",
+			placeholder: "e.g., Base case",
+			tooltip: "Display name for this scenario in tables and charts.",
+			validation: { type: "text", maxLength: 120 },
+			maxLength: 120,
+			onChange: (value) => {
+				title.textContent = value || `Scenario ${displayIndex}`;
+			},
+		}));
+		grid.appendChild(createCheckboxField({
+			label: "Active",
+			path: `${basePath}.active`,
+			value: scenario?.active,
+			tooltip: "Toggle whether this scenario participates in the simulation run.",
+		}));
+		card.appendChild(grid);
+	}
 
-	const scenarioKey = `scenario-${index + 1}`;
-	const eventsSectionId = `${scenarioKey}-events`;
-	const loansSectionId = `${scenarioKey}-loans`;
-	const investmentsSectionId = `${scenarioKey}-investments`;
-	const scenarioEvents = Array.isArray(scenario.events) ? scenario.events : [];
-	const scenarioLoans = Array.isArray(scenario.loans) ? scenario.loans : [];
-	const scenarioInvestments = Array.isArray(scenario.investments) ? scenario.investments : [];
-
-	const eventsSection = createEventCollection(scenarioEvents, `scenarios[${index}].events`, {
-		heading: "Scenario events",
-		titlePrefix: "Event",
-		addLabel: "Add event",
-		navTargetId: eventsSectionId,
+	const collections = buildScenarioCollections(scenario || {}, basePath, {
+		navPrefix,
+		eventsNavId: options.eventsNavId,
+		loansNavId: options.loansNavId,
+		investmentsNavId: options.investmentsNavId,
+		eventsHeading: options.eventsHeading || (isCommon ? "Common events" : "Scenario events"),
+		eventAddLabel: options.eventAddLabel || (isCommon ? "Add common event" : "Add event"),
+		eventsHeadingClass: options.eventsHeadingClass,
+		eventTitlePrefix: options.eventTitlePrefix || "Event",
+		loansHeading: options.loansHeading || (isCommon ? "Common loans" : "Scenario loans"),
+		loanAddLabel: options.loanAddLabel || (isCommon ? "Add common loan" : "Add loan"),
+		investmentsHeading: options.investmentsHeading || (isCommon ? "Common investments" : "Scenario investments"),
+		investmentAddLabel: options.investmentAddLabel || (isCommon ? "Add common investment" : "Add investment"),
+		allowOptimizer: isCommon ? false : options.allowOptimizer !== false,
 	});
+	const {
+		eventsSection,
+		loansSection,
+		investmentsSection,
+		navSections,
+	} = collections;
 
-	const loansSection = createLoanCollection(scenarioLoans, `scenarios[${index}].loans`, {
-		heading: "Scenario loans",
-		addLabel: "Add loan",
-		navTargetId: loansSectionId,
-	});
-
-	const investmentsSection = createInvestmentCollection(scenarioInvestments, `scenarios[${index}].investments`, {
-		heading: "Scenario investments",
-		addLabel: "Add investment",
-		navTargetId: investmentsSectionId,
-	});
-
-	const navSections = [
-		{ id: eventsSectionId, label: "Events", element: eventsSection, count: scenarioEvents.length },
-		{ id: loansSectionId, label: "Loans", element: loansSection, count: scenarioLoans.length },
-		{ id: investmentsSectionId, label: "Investments", element: investmentsSection, count: scenarioInvestments.length },
-	];
 	const nav = createSectionNavigation(navSections, header);
 	if (nav) {
-		const totalScenarios = Array.isArray(currentConfig?.scenarios) ? currentConfig.scenarios.length : 0;
-		if (index < totalScenarios - 1) {
+		if (collectionIndex < totalCollectionCount - 1) {
+			const nextCardIndex = collectionIndex + 1;
 			const nextButton = document.createElement("button");
 			nextButton.type = "button";
 			nextButton.className = "section-nav__button section-nav__button--next";
 			nextButton.textContent = "Next scenario";
-			nextButton.setAttribute("aria-label", "Jump to next scenario");
+			nextButton.setAttribute("aria-label", collectionIndex === 0 ? "Jump to the first scenario" : "Jump to next scenario");
 			nextButton.addEventListener("click", () => {
 				closeActiveHelpTooltip();
 				const nextCard = configPanel
-					? configPanel.querySelector(`.editor-card[data-scenario-index="${index + 1}"]`)
+					? configPanel.querySelector(`.editor-card[data-collection-index="${nextCardIndex}"]`)
 					: null;
 				if (nextCard) {
 					const nextHeader = nextCard.querySelector(".scenario-card-header") || nextCard;
@@ -3029,6 +3104,7 @@ function createScenarioCard(scenario, index) {
 			});
 			nav.appendChild(nextButton);
 		}
+
 		header.appendChild(nav);
 	}
 
@@ -3918,7 +3994,14 @@ function createCardHeader(titleText, onRemove, removeLabel, options = {}) {
 	const header = document.createElement("div");
 	header.className = "editor-card-header";
 	if (options.extraClass) {
-		header.classList.add(options.extraClass);
+		const extraClasses = Array.isArray(options.extraClass)
+			? options.extraClass.flatMap((value) =>
+				typeof value === "string" ? value.split(/\s+/).filter(Boolean) : [],
+			)
+			: (typeof options.extraClass === "string" ? options.extraClass.split(/\s+/).filter(Boolean) : []);
+		if (extraClasses.length > 0) {
+			header.classList.add(...extraClasses);
+		}
 	}
 
 	const title = document.createElement("h4");
