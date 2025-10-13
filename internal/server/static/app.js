@@ -78,6 +78,7 @@ const EDITOR_STORAGE_KEY = "financeForecast.editorState.v1";
 const EDITOR_STORAGE_VERSION = 1;
 const EDITOR_PERSIST_DEBOUNCE_MS = 600;
 const OPTIMIZER_STORAGE_KEY = "financeForecast.optimizerEnabled.v1";
+const OPTIMIZER_LABEL = "Optimizer";
 
 let optimizerEnabled = false;
 
@@ -3089,8 +3090,13 @@ function createScenarioCard(scenario, index, options = {}) {
 			const nextButton = document.createElement("button");
 			nextButton.type = "button";
 			nextButton.className = "section-nav__button section-nav__button--next";
-			nextButton.textContent = "Next scenario";
-			nextButton.setAttribute("aria-label", collectionIndex === 0 ? "Jump to the first scenario" : "Jump to next scenario");
+			if (collectionIndex === 0) {
+				nextButton.textContent = "Jump to the first scenario";
+				nextButton.setAttribute("aria-label", "Jump to the first scenario");
+			} else {
+				nextButton.textContent = "Next scenario";
+				nextButton.setAttribute("aria-label", "Jump to next scenario");
+			}
 			nextButton.addEventListener("click", () => {
 				closeActiveHelpTooltip();
 				const nextCard = configPanel
@@ -3241,11 +3247,15 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 		section.classList.add("editor-optimizer--global-disabled");
 	}
 
+	const optimizerLabel = typeof options.optimizerLabel === "string" && options.optimizerLabel.trim() !== ""
+		? options.optimizerLabel.trim()
+		: OPTIMIZER_LABEL;
+
 	const header = document.createElement("div");
 	header.className = "editor-optimizer__header";
 	const labelEl = document.createElement("span");
 	labelEl.className = "editor-optimizer__label";
-	labelEl.textContent = "Optimizer";
+	labelEl.textContent = optimizerLabel;
 	header.appendChild(labelEl);
 	section.appendChild(header);
 
@@ -3266,15 +3276,15 @@ function createEventOptimizerSection(event, basePath, options = {}) {
 		wrapper: section,
 		labelEl,
 		tooltipText: initialTooltipMessage,
-		label: "Optimizer",
+		label: optimizerLabel,
 	});
 	const updateHelpTooltip = (message) => {
-		const content = message || "Optimizer details";
+		const content = message || `${optimizerLabel} details`;
 		if (helpElements?.tooltip) {
 			helpElements.tooltip.textContent = content;
 		}
 		if (helpElements?.trigger) {
-			helpElements.trigger.setAttribute("aria-label", "Optimizer info");
+			helpElements.trigger.setAttribute("aria-label", `${optimizerLabel} info`);
 		}
 	};
 
