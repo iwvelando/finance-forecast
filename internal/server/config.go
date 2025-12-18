@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"unicode"
@@ -19,6 +20,7 @@ type Config struct {
 	Address         string               `yaml:"address"`
 	MaxUploadSize   string               `yaml:"maxUploadSize"`
 	Logging         config.LoggingConfig `yaml:"logging"`
+	ServerSubPath   string               `yaml:"serverSubPath"`
 	uploadSizeBytes int64
 }
 
@@ -71,6 +73,8 @@ func (c *Config) normalize() error {
 	if c.Address == "" {
 		c.Address = constants.DefaultServerAddress
 	}
+
+	c.ServerSubPath = normalizeBasePath(c.ServerSubPath)
 
 	sizeStr := strings.TrimSpace(c.MaxUploadSize)
 	if sizeStr == "" {
@@ -136,4 +140,18 @@ func ParseSize(value string) (int64, error) {
 		return 0, fmt.Errorf("size overflow for value %s", value)
 	}
 	return result, nil
+}
+
+func normalizeBasePath(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "/" {
+		return ""
+	}
+
+	cleaned := path.Clean("/" + strings.Trim(trimmed, "/"))
+	if cleaned == "." || cleaned == "/" {
+		return ""
+	}
+
+	return cleaned
 }

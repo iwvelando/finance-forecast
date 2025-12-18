@@ -3,6 +3,7 @@
 # Copy to server-config.yaml and adjust as needed.
 address: ":8080"
 maxUploadSize: 256K
+serverSubPath: "" # optional URL prefix (e.g. /finance) when serving behind a sub-path
 logging:
   # level options: debug, info, warn, error
   level: info

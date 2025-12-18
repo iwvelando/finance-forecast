@@ -37,6 +37,11 @@ if (configPanel) {
 const rootStyle = document.documentElement.style;
 const rootElement = document.documentElement;
 
+const BASE_PATH = detectBasePath();
+if (rootElement) {
+	rootElement.dataset.basePath = BASE_PATH;
+}
+
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = {
 	results: resultsPanel,
@@ -81,6 +86,72 @@ const OPTIMIZER_STORAGE_KEY = "financeForecast.optimizerEnabled.v1";
 const OPTIMIZER_LABEL = "Optimizer";
 
 let optimizerEnabled = false;
+
+function normalizeBasePathValue(rawPath) {
+	if (typeof rawPath !== "string") {
+		return "";
+	}
+
+	const trimmed = rawPath.trim();
+	if (trimmed === "" || trimmed === "/") {
+		return "";
+	}
+
+	let cleaned = trimmed;
+	if (!cleaned.startsWith("/")) {
+		cleaned = `/${cleaned}`;
+	}
+	while (cleaned.endsWith("/") && cleaned !== "/") {
+		cleaned = cleaned.slice(0, -1);
+	}
+
+	return cleaned === "/" ? "" : cleaned;
+}
+
+function detectBasePath() {
+	if (typeof window === "undefined" || typeof document === "undefined") {
+		return "";
+	}
+
+	const tryNormalizeFromScript = (scriptEl) => {
+		if (!scriptEl || !scriptEl.src) {
+			return null;
+		}
+		try {
+			const scriptUrl = new URL(scriptEl.src, window.location.href);
+			const scriptPath = scriptUrl.pathname || "/";
+			const baseFromScript = scriptPath.replace(/\/[^/]*$/, "");
+			return normalizeBasePathValue(baseFromScript);
+		} catch (error) {
+			console.warn("Unable to derive base path from script src.", error);
+			return null;
+		}
+	};
+
+	const fromCurrentScript = tryNormalizeFromScript(document.currentScript);
+	if (fromCurrentScript !== null && fromCurrentScript !== undefined) {
+		return fromCurrentScript;
+	}
+
+	const scriptEl = document.querySelector('script[src$="app.js"]');
+	const fromQuery = tryNormalizeFromScript(scriptEl);
+	if (fromQuery !== null && fromQuery !== undefined) {
+		return fromQuery;
+	}
+
+	return normalizeBasePathValue(window.location.pathname || "");
+}
+
+function withBasePath(pathname) {
+	const suffix = typeof pathname === "string" ? pathname : "";
+	const normalizedSuffix = suffix.startsWith("/") ? suffix : `/${suffix}`;
+	if (BASE_PATH === "") {
+		return normalizedSuffix;
+	}
+
+	const trimmedBase = BASE_PATH.endsWith("/") ? BASE_PATH.slice(0, -1) : BASE_PATH;
+	return `${trimmedBase}${normalizedSuffix}`;
+}
 
 function loadOptimizerPreference() {
 	if (typeof window === "undefined" || !window.localStorage) {
@@ -1014,7 +1085,7 @@ async function runForecastFromFile(file) {
 		const formData = new FormData();
 		formData.append("file", file);
 
-		const response = await fetch("/api/forecast", {
+		const response = await fetch(withBasePath("/api/forecast"), {
 			method: "POST",
 			body: formData,
 		});
@@ -4845,7 +4916,7 @@ async function handleRunForecast() {
 				optimize: Boolean(optimizerEnabled),
 			},
 		};
-		const response = await fetch("/api/editor/forecast", {
+		const response = await fetch(withBasePath("/api/editor/forecast"), {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -4949,7 +5020,7 @@ async function downloadCurrentConfig() {
 
 	try {
 		const payload = buildConfigPayload({ includeDefaults: true });
-		const response = await fetch("/api/editor/export", {
+		const response = await fetch(withBasePath("/api/editor/export"), {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -5170,7 +5241,7 @@ async function initializeVersionFooter() {
 	}
 
 	try {
-		const response = await fetch("/api/version", { cache: "no-store" });
+		const response = await fetch(withBasePath("/api/version"), { cache: "no-store" });
 		if (!response.ok) {
 			throw new Error(`unexpected status ${response.status}`);
 		}

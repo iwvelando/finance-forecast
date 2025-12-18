@@ -31,10 +31,11 @@ func TestLoadConfigOverrides(t *testing.T) {
 
 	contents := []byte(`address: 127.0.0.1:9000
 maxUploadSize: 2M
+serverSubPath: /finance/
 logging:
-  level: debug
-  format: console
-  outputFile: /tmp/server.log
+	level: debug
+	format: console
+	outputFile: /tmp/server.log
 `)
 	if err := os.WriteFile(path, contents, 0600); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)
@@ -59,6 +60,9 @@ logging:
 	}
 	if cfg.Logging.OutputFile != "/tmp/server.log" {
 		t.Fatalf("expected logging outputFile /tmp/server.log, got %s", cfg.Logging.OutputFile)
+	}
+	if cfg.ServerSubPath != "/finance" {
+		t.Fatalf("expected server sub-path /finance, got %q", cfg.ServerSubPath)
 	}
 }
 
@@ -102,5 +106,24 @@ func TestParseSize(t *testing.T) {
 	}
 	if _, err := ParseSize("abc"); err == nil {
 		t.Fatal("expected error for invalid number")
+	}
+}
+
+func TestNormalizeBasePath(t *testing.T) {
+	tests := map[string]string{
+		"":            "",
+		" ":           "",
+		"/":           "",
+		"finance":     "/finance",
+		"/finance/":   "/finance",
+		"//finance//": "/finance",
+		"/nested/ui":  "/nested/ui",
+	}
+
+	for input, expected := range tests {
+		got := normalizeBasePath(input)
+		if got != expected {
+			t.Fatalf("normalizeBasePath(%q) = %q, expected %q", input, got, expected)
+		}
 	}
 }
