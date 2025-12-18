@@ -16,8 +16,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const defaultForecastPath = "/api/forecast"
+
 func TestHandleForecastSuccess(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -78,8 +80,51 @@ func TestHandleForecastSuccess(t *testing.T) {
 	}
 }
 
+func TestHandleForecastSuccessWithSubPath(t *testing.T) {
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "/finance")
+
+	configPath := filepath.Join("..", "..", "test", "test_config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read test config: %v", err)
+	}
+
+	rr := performUploadTo(t, handler, string(data), "test_config.yaml", "/finance/api/forecast")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp forecastResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp.Scenarios) == 0 {
+		t.Fatal("expected scenarios in response")
+	}
+	if len(resp.Rows) == 0 {
+		t.Fatal("expected rows in response")
+	}
+	if resp.CSV == "" {
+		t.Fatal("expected CSV data in response")
+	}
+	if resp.Duration == "" {
+		t.Fatal("expected duration in response")
+	}
+	if resp.Config == nil {
+		t.Fatal("expected config data in response")
+	}
+	if resp.ConfigYAML == "" {
+		t.Fatal("expected config YAML in response")
+	}
+	if len(resp.Metrics) != len(resp.Scenarios) {
+		t.Fatalf("expected metrics for each scenario, got %d entries for %d scenarios", len(resp.Metrics), len(resp.Scenarios))
+	}
+}
+
 func TestHandleForecastEditorSuccess(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	configPath := filepath.Join("..", "..", "test", "test_config.yaml")
 	data, err := os.ReadFile(configPath)
@@ -121,7 +166,7 @@ func TestHandleForecastEditorSuccess(t *testing.T) {
 }
 
 func TestHandleConfigExport(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	payload := map[string]interface{}{
 		"scenarios": []interface{}{
@@ -195,7 +240,7 @@ func TestHandleConfigExport(t *testing.T) {
 }
 
 func TestVersionEndpoint(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
 	rr := httptest.NewRecorder()
@@ -216,7 +261,7 @@ func TestVersionEndpoint(t *testing.T) {
 }
 
 func TestHandleForecastMethodNotAllowed(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forecast", nil)
 	rr := httptest.NewRecorder()
@@ -229,7 +274,7 @@ func TestHandleForecastMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleForecastUploadTooLarge(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), 64, "test-version")
+	handler := NewHandler(zap.NewNop(), 64, "test-version", "")
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -266,7 +311,7 @@ func TestHandleForecastUploadTooLarge(t *testing.T) {
 }
 
 func TestHandleForecastMissingFile(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -294,7 +339,7 @@ func TestHandleForecastMissingFile(t *testing.T) {
 }
 
 func TestHandleForecastInvalidYAML(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	rr := performUpload(t, handler, "common: [", "config.yaml")
 
@@ -312,7 +357,7 @@ func TestHandleForecastInvalidYAML(t *testing.T) {
 }
 
 func TestHandleForecastDateParseFailure(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	configYAML := `
 common:
@@ -343,7 +388,7 @@ scenarios:
 }
 
 func TestHandleForecastProcessLoansFailure(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	configYAML := `
 common:
@@ -372,7 +417,7 @@ scenarios:
 }
 
 func TestStaticAssetsServed(t *testing.T) {
-	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version")
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
@@ -412,7 +457,83 @@ func TestStaticAssetsServed(t *testing.T) {
 	}
 }
 
+func TestStaticAssetsServedWithSubPath(t *testing.T) {
+	handler := NewHandler(zap.NewNop(), constants.DefaultMaxUploadSizeBytes, "test-version", "/finance")
+
+	redirectReq := httptest.NewRequest(http.MethodGet, "/finance", nil)
+	redirectRR := httptest.NewRecorder()
+	handler.ServeHTTP(redirectRR, redirectReq)
+
+	if redirectRR.Code != http.StatusPermanentRedirect {
+		t.Fatalf("expected redirect for sub-path without trailing slash, got %d", redirectRR.Code)
+	}
+	if loc := redirectRR.Header().Get("Location"); loc != "/finance/" {
+		t.Fatalf("expected redirect location /finance/, got %q", loc)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/finance/", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for index, got %d", rr.Code)
+	}
+
+	if !strings.Contains(rr.Body.String(), "Finance Forecast") {
+		t.Fatalf("expected HTML body to contain title, got %q", rr.Body.String())
+	}
+
+	cssReq := httptest.NewRequest(http.MethodGet, "/finance/styles.css", nil)
+	cssRR := httptest.NewRecorder()
+	handler.ServeHTTP(cssRR, cssReq)
+
+	if cssRR.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for css, got %d", cssRR.Code)
+	}
+
+	versionReq := httptest.NewRequest(http.MethodGet, "/finance/api/version", nil)
+	versionRR := httptest.NewRecorder()
+	handler.ServeHTTP(versionRR, versionReq)
+
+	if versionRR.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for version endpoint with sub-path, got %d", versionRR.Code)
+	}
+}
+
+func TestJoinBasePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		basePath string
+		route    string
+		expected string
+	}{
+		{"empty base and route", "", "", ""},
+		{"empty base", "", "/api", "/api"},
+		{"missing slash route", "", "api", "/api"},
+		{"base only", "/finance", "", "/finance"},
+		{"base with trailing slash", "/finance/", "/api", "/finance/api"},
+		{"base without trailing slash", "/finance", "/api", "/finance/api"},
+		{"route without slash", "/finance", "api", "/finance/api"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			got := joinBasePath(tt.basePath, tt.route)
+			if got != tt.expected {
+				t.Fatalf("joinBasePath(%q, %q) = %q, expected %q", tt.basePath, tt.route, got, tt.expected)
+			}
+		})
+	}
+}
+
 func performUpload(t *testing.T, handler http.Handler, content, filename string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return performUploadTo(t, handler, content, filename, defaultForecastPath)
+}
+
+func performUploadTo(t *testing.T, handler http.Handler, content, filename, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	body := &bytes.Buffer{}
@@ -428,7 +549,7 @@ func performUpload(t *testing.T, handler http.Handler, content, filename string)
 		t.Fatalf("failed to close writer: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/forecast", body)
+	req := httptest.NewRequest(http.MethodPost, path, body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	rr := httptest.NewRecorder()

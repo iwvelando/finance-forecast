@@ -289,7 +289,7 @@ func runServer(addr string, maxUpload string, serverConfigPath string, configPat
 		zap.String("version", appVersion),
 	)
 
-	handler := server.NewHandler(logger, srvCfg.UploadSizeBytes(), appVersion)
+	handler := server.NewHandler(logger, srvCfg.UploadSizeBytes(), appVersion, srvCfg.ServerSubPath)
 	if err := http.ListenAndServe(srvCfg.Address, handler); err != nil {
 		logger.Fatal("server encountered an error",
 			zap.String("op", "serve"),

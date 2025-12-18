@@ -37,7 +37,7 @@ type forecastOptions struct {
 }
 
 // NewHandler constructs the HTTP handler that serves the web UI and forecast API.
-func NewHandler(logger *zap.Logger, maxUploadSize int64, version string) http.Handler {
+func NewHandler(logger *zap.Logger, maxUploadSize int64, version string, basePath string) http.Handler {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -51,21 +51,23 @@ func NewHandler(logger *zap.Logger, maxUploadSize int64, version string) http.Ha
 		trimmedVersion = "dev"
 	}
 
+	normalizedBasePath := normalizeBasePath(basePath)
+
 	h := &handler{logger: logger, maxUploadSize: maxUploadSize, version: trimmedVersion}
 
 	mux := http.NewServeMux()
 
 	// Forecast API endpoint (file upload)
-	mux.HandleFunc("/api/forecast", h.handleForecast)
+	mux.HandleFunc(joinBasePath(normalizedBasePath, "/api/forecast"), h.handleForecast)
 
 	// Forecast API endpoint for editor-driven updates
-	mux.HandleFunc("/api/editor/forecast", h.handleForecastEditor)
+	mux.HandleFunc(joinBasePath(normalizedBasePath, "/api/editor/forecast"), h.handleForecastEditor)
 
 	// Config serialization endpoint for editor downloads
-	mux.HandleFunc("/api/editor/export", h.handleConfigExport)
+	mux.HandleFunc(joinBasePath(normalizedBasePath, "/api/editor/export"), h.handleConfigExport)
 
 	// Version endpoint for UI metadata
-	mux.HandleFunc("/api/version", h.handleVersion)
+	mux.HandleFunc(joinBasePath(normalizedBasePath, "/api/version"), h.handleVersion)
 
 	// Static assets (web UI)
 	sub, err := fs.Sub(staticFiles, "static")
@@ -73,9 +75,38 @@ func NewHandler(logger *zap.Logger, maxUploadSize int64, version string) http.Ha
 		panic(fmt.Sprintf("failed to prepare embedded static files: %v", err))
 	}
 	fileServer := http.FileServer(http.FS(sub))
-	mux.Handle("/", fileServer)
+	if normalizedBasePath == "" {
+		mux.Handle("/", fileServer)
+	} else {
+		mux.Handle(normalizedBasePath+"/", http.StripPrefix(normalizedBasePath, fileServer))
+		mux.Handle(normalizedBasePath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == normalizedBasePath {
+				http.Redirect(w, r, normalizedBasePath+"/", http.StatusPermanentRedirect)
+				return
+			}
+			fileServer.ServeHTTP(w, r)
+		}))
+	}
 
 	return mux
+}
+
+func joinBasePath(basePath, route string) string {
+	if route == "" {
+		return basePath
+	}
+
+	suffix := route
+	if !strings.HasPrefix(suffix, "/") {
+		suffix = "/" + suffix
+	}
+
+	if basePath == "" {
+		return suffix
+	}
+
+	trimmedBase := strings.TrimSuffix(basePath, "/")
+	return trimmedBase + suffix
 }
 
 type forecastResponse struct {
