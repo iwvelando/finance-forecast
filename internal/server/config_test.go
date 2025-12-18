@@ -33,9 +33,9 @@ func TestLoadConfigOverrides(t *testing.T) {
 maxUploadSize: 2M
 serverSubPath: /finance/
 logging:
-	level: debug
-	format: console
-	outputFile: /tmp/server.log
+  level: debug
+  format: console
+  outputFile: /tmp/server.log
 `)
 	if err := os.WriteFile(path, contents, 0600); err != nil {
 		t.Fatalf("failed to write temp config: %v", err)

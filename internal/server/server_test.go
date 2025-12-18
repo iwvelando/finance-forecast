@@ -500,6 +500,33 @@ func TestStaticAssetsServedWithSubPath(t *testing.T) {
 	}
 }
 
+func TestJoinBasePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		basePath string
+		route    string
+		expected string
+	}{
+		{"empty base and route", "", "", ""},
+		{"empty base", "", "/api", "/api"},
+		{"missing slash route", "", "api", "/api"},
+		{"base only", "/finance", "", "/finance"},
+		{"base with trailing slash", "/finance/", "/api", "/finance/api"},
+		{"base without trailing slash", "/finance", "/api", "/finance/api"},
+		{"route without slash", "/finance", "api", "/finance/api"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			got := joinBasePath(tt.basePath, tt.route)
+			if got != tt.expected {
+				t.Fatalf("joinBasePath(%q, %q) = %q, expected %q", tt.basePath, tt.route, got, tt.expected)
+			}
+		})
+	}
+}
+
 func performUpload(t *testing.T, handler http.Handler, content, filename string) *httptest.ResponseRecorder {
 	t.Helper()
 

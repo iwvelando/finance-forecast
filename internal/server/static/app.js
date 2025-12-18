@@ -139,7 +139,7 @@ function detectBasePath() {
 		return fromQuery;
 	}
 
-	return normalizeBasePathValue(window.location.pathname || "");
+	return "";
 }
 
 function withBasePath(pathname) {
