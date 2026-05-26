@@ -196,7 +196,7 @@ func GetForecastWithFixedTime(logger *zap.Logger, conf config.Configuration, fix
 
 			result.Liquid[date] = cashBalance
 			result.Data[date] = cashBalance + totalInvestments
-			if date == conf.Common.DeathDate {
+			if pastDeath, _ := datetime.DateBeforeDate(conf.Common.DeathDate, date); pastDeath || date == conf.Common.DeathDate {
 				break
 			}
 			previousDate = date
